@@ -1,0 +1,31 @@
+{
+  "name": "signalk-baltic-warnings",
+  "version": "0.1.0",
+  "description": "Collects navigational warnings for the Baltic (BALTICO/NAVTEX, Digitraffic, on-board barometer), filters them by own position and planned route, and publishes them as Signal K notifications, chart regions/notes and a REST API.",
+  "main": "index.js",
+  "bin": {
+    "baltic-warnings-probe": "bin/probe.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "probe": "node bin/probe.js"
+  },
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk-category-notifications",
+    "signalk-category-weather",
+    "navtex",
+    "navigational-warnings",
+    "baltic"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "Apache-2.0",
+  "files": [
+    "index.js",
+    "lib/",
+    "bin/",
+    "README.md"
+  ]
+}
