@@ -63,7 +63,7 @@ To see it as on the boat's 10.1" screen, make the browser window 1280 × 800 or 
 
 ### B. A real Signal K server with recorded boat data
 
-This is the important test: it checks that Sailpartner reads the Signal K data paths correctly and fetches the real forecast from Open-Meteo (internet needed). The steps below are for **Mac or Linux**; the install script does not run on Windows (use WSL there).
+This is the important test: it checks that Sailpartner reads the Signal K data paths correctly and fetches the real forecast from Open-Meteo (internet needed). The steps work on **Windows, Mac and Linux**. On Windows use *PowerShell* or the *Command Prompt*.
 
 1. Install and start Signal K with its built-in sample NMEA 2000 data:
    ```bash
@@ -72,11 +72,12 @@ This is the important test: it checks that Sailpartner reads the Signal K data p
    ```
    (`--override-timestamps` replaces the recorded timestamps with the current time.)
 2. Open **http://localhost:3000** and create the admin user.
-3. In a second terminal, install the two plugins from your clone of this repository:
+3. In a second terminal, go to your clone of this repository and install the two plugins:
    ```bash
-   bash sailpartner/scripts/install-on-pi.sh
+   cd sailpartner
+   node scripts/install.js
    ```
-   It says it can't restart Signal K — that's expected on a laptop.
+   It pulls the latest version, installs both plugins into your Signal K folder (`C:\Users\<you>\.signalk` on Windows, `~/.signalk` on Mac/Linux) and asks you to restart Signal K.
 4. Stop Signal K with **Ctrl+C** in the first terminal and start it again with the same command.
 5. In Signal K: **Server → Plugin Config** → enable **Sailpartner** and **Baltic Warnings** → **Submit** each.
 6. Open **http://localhost:3000/sailpartner/**.
@@ -86,7 +87,7 @@ What to expect:
 - The sample data comes from somewhere else than the Baltic, so the place shows as *At sea* or *At anchor*, and the Baltic warnings will mostly be "far".
 - The sample data probably has no SmartShunt and no BME280: you'll see *Battery: no data* and no barometer trend. That's correct behaviour.
 - The 3-hour wind history and the barometer trend fill up while the server runs.
-- If you sail in the Baltic, try the warnings probe as well: `node ~/.signalk/node_modules/signalk-baltic-warnings/bin/probe.js 54.373 11.004`.
+- If you sail in the Baltic, try the warnings probe as well: `node packages/signalk-baltic-warnings/bin/probe.js 54.373 11.004` (from the repository folder).
 
 If something looks wrong, open an issue with a screenshot and the Signal K server log (**Server → Server Log**).
 
@@ -217,7 +218,7 @@ Both plugins live in this repository. They have no native dependencies — nothi
 ```bash
 cd ~
 git clone https://github.com/polimux/sailpartner.git
-bash ~/sailpartner/scripts/install-on-pi.sh
+node ~/sailpartner/scripts/install.js
 ```
 
 The script packs both plugins, installs them into `~/.signalk` and restarts Signal K. Then:
@@ -292,7 +293,7 @@ Goal: the Pi boots straight into the full-screen morning brief.
 ### 13. Updating
 
 ```bash
-bash ~/sailpartner/scripts/install-on-pi.sh
+node ~/sailpartner/scripts/install.js
 ```
 
 It pulls the latest version from GitHub, reinstalls both plugins and restarts Signal K. Your settings, trip and history stay (they live in `~/.signalk/plugin-config-data/`).

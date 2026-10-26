@@ -63,7 +63,7 @@ See the [installation guide in the repository README](../../README.md#installati
 
 ```bash
 git clone https://github.com/polimux/sailpartner.git
-bash sailpartner/scripts/install-on-pi.sh
+node sailpartner/scripts/install.js
 ```
 
 Enable **Sailpartner** in *Server → Plugin Config*, open `http://<pi>:3000/sailpartner/`.
