@@ -32,7 +32,15 @@ const q = p => `"${p}"`
 
 if (!fs.existsSync(SK_DIR)) {
   console.error(`Signal K folder not found: ${SK_DIR}`)
-  console.error('Start the Signal K server once (it creates this folder), or set SIGNALK_DIR.')
+  console.error('')
+  console.error('Signal K may keep its settings somewhere else when started with sample data.')
+  console.error('Start it with this folder as its configuration folder, then run this script again:')
+  console.error('')
+  console.error(process.platform === 'win32'
+    ? `  mkdir "${SK_DIR}"\n  signalk-server -c "${SK_DIR}" --sample-n2k-data --override-timestamps`
+    : `  mkdir -p "${SK_DIR}"\n  signalk-server -c "${SK_DIR}" --sample-n2k-data --override-timestamps`)
+  console.error('')
+  console.error('Or point this script at another folder: SIGNALK_DIR=<folder> node scripts/install.js')
   process.exit(1)
 }
 

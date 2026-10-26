@@ -65,12 +65,21 @@ To see it as on the boat's 10.1" screen, make the browser window 1280 × 800 or 
 
 This is the important test: it checks that Sailpartner reads the Signal K data paths correctly and fetches the real forecast from Open-Meteo (internet needed). The steps work on **Windows, Mac and Linux**. On Windows use *PowerShell* or the *Command Prompt*.
 
-1. Install and start Signal K with its built-in sample NMEA 2000 data:
+1. Install Signal K and start it with its built-in sample NMEA 2000 data. Tell it explicitly to keep its settings in the `.signalk` folder in your home folder (`-c`), so the install script finds it:
+
+   **Windows (PowerShell):**
+   ```powershell
+   npm install -g signalk-server
+   mkdir $HOME\.signalk
+   signalk-server -c $HOME\.signalk --sample-n2k-data --override-timestamps
+   ```
+   **Mac / Linux:**
    ```bash
    npm install -g signalk-server
-   signalk-server --sample-n2k-data --override-timestamps
+   mkdir -p ~/.signalk
+   signalk-server -c ~/.signalk --sample-n2k-data --override-timestamps
    ```
-   (`--override-timestamps` replaces the recorded timestamps with the current time.)
+   (`--override-timestamps` replaces the recorded timestamps with the current time. Leave this window open — it is the running server.)
 2. Open **http://localhost:3000** and create the admin user.
 3. In a second terminal, go to your clone of this repository and install the two plugins:
    ```bash
@@ -78,7 +87,7 @@ This is the important test: it checks that Sailpartner reads the Signal K data p
    node scripts/install.js
    ```
    It pulls the latest version, installs both plugins into your Signal K folder (`C:\Users\<you>\.signalk` on Windows, `~/.signalk` on Mac/Linux) and asks you to restart Signal K.
-4. Stop Signal K with **Ctrl+C** in the first terminal and start it again with the same command.
+4. Stop Signal K with **Ctrl+C** in the first terminal and start it again with the same command (including `-c …`).
 5. In Signal K: **Server → Plugin Config** → enable **Sailpartner** and **Baltic Warnings** → **Submit** each.
 6. Open **http://localhost:3000/sailpartner/**.
 
