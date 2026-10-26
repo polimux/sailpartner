@@ -4,7 +4,7 @@
 // Runs the Sailpartner screen on your laptop without a boat or Signal K server:
 // a simulated morning in Heiligenhafen (26 Oct 2026, a front coming in) with
 // mocked Open-Meteo responses and three hours of wind/pressure history.
-// If the signalk-baltic-warnings package sits next to this one (as in the
+// If the sailwarnings package sits next to this one (as in the
 // repository), it runs too, fed with a saved copy of the BALTICO warnings page.
 //
 //   npm run demo   ->  http://localhost:3333/
@@ -129,7 +129,7 @@ setInterval(simulate, 1000)
 // The warnings plugin, with offline copies of its sources
 const routers = { sailpartner: router }
 let warnings = null
-const WARN_DIR = path.join(__dirname, '..', '..', 'signalk-baltic-warnings')
+const WARN_DIR = path.join(__dirname, '..', '..', 'sailwarnings')
 // demo notifications come from the real warnings plugin, not the test fixtures
 for (const k of ['notifications.navigation.warnings', 'notifications.environment.warnings']) app.self[k] = {}
 try {
@@ -144,11 +144,11 @@ try {
     fetchJson: async () => { throw new Error('offline demo') }
   }
   warnings = createWarnings(app, { http: offline })
-  routers['signalk-baltic-warnings'] = mockRouter()
-  warnings.registerWithRouter(routers['signalk-baltic-warnings'])
+  routers['sailwarnings'] = mockRouter()
+  warnings.registerWithRouter(routers['sailwarnings'])
   warnings.start({ sources: { digitraffic: { enabled: false } } })
 } catch (e) {
-  console.log(`(signalk-baltic-warnings not found next to this package — warnings will be empty: ${e.message})`)
+  console.log(`(sailwarnings not found next to this package — warnings will be empty: ${e.message})`)
 }
 
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css' }

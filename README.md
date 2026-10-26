@@ -10,7 +10,7 @@ A morning brief and logbook screen for a Hanse 323, running on a Raspberry Pi wi
 
 | Package | What it does | Status |
 |---|---|---|
-| [`signalk-baltic-warnings`](packages/signalk-baltic-warnings) | Signal K plugin: navigational warnings for the Baltic (BALTICO/NAVTEX for all Baltic states, Digitraffic, on-board barometer), filtered by position and route, published as notifications, chart regions/notes and a REST API | v0.1, tests passing, live sources to be confirmed on the Pi |
+| [`sailwarnings`](packages/sailwarnings) | Signal K plugin: navigational warnings for the Baltic (BALTICO/NAVTEX for all Baltic states, Digitraffic, on-board barometer), filtered by position and route, published as notifications, chart regions/notes and a REST API | v0.1, tests passing, live sources to be confirmed on the Pi |
 | [`sailpartner`](packages/sailpartner) | Signal K plugin + web app: **Brief** (verdict and day ribbon for here, attention cards), **Passage** (tap a route on the chart: weather along the way at your speed, trip verdict, better departure time, warnings on the route), **Instruments** (wind dial, battery, barometer), **Weather** (48 h), **Warnings**, **Battery** (7 days), **Logbook** (automatic and manual entries, CSV export) and **NMEA** (all live data with PGN/sentence and source) | v0.3, tests passing, not yet run on a boat |
 
 ## Contents
@@ -27,7 +27,7 @@ A morning brief and logbook screen for a Hanse 323, running on a Raspberry Pi wi
   6. [Barometer, temperature and humidity (BME280)](#6-barometer-temperature-and-humidity-bme280)
   7. [Victron SmartShunt via Bluetooth](#7-victron-smartshunt-via-bluetooth)
   8. [Helper plugins from the Signal K App Store](#8-helper-plugins-from-the-signal-k-app-store)
-  9. [Install Sailpartner and Baltic Warnings](#9-install-sailpartner-and-baltic-warnings)
+  9. [Install Sailpartner and Sailwarnings](#9-install-sailpartner-and-sailwarnings)
   10. [Configure the two plugins](#10-configure-the-two-plugins)
   11. [Check the warning sources](#11-check-the-warning-sources)
   12. [The 10.1" screen in kiosk mode](#12-the-101-screen-in-kiosk-mode)
@@ -93,7 +93,7 @@ This is the important test: it checks that Sailpartner reads the Signal K data p
    ```
    It pulls the latest version, installs both plugins into your Signal K folder (`C:\Users\<you>\.signalk` on Windows, `~/.signalk` on Mac/Linux) and asks you to restart Signal K.
 4. Stop Signal K with **Ctrl+C** in the first terminal and start it again with the same command (including `-c …`).
-5. In Signal K: **Server → Plugin Config** → enable **Sailpartner** and **Baltic Warnings** → **Submit** each.
+5. In Signal K: **Server → Plugin Config** → enable **Sailpartner** and **Sailwarnings** → **Submit** each.
 6. Open **http://localhost:3000/sailpartner/**.
 
 What to expect:
@@ -101,7 +101,7 @@ What to expect:
 - The sample data comes from somewhere else than the Baltic, so the place shows as *At sea* or *At anchor*, and the Baltic warnings will mostly be "far".
 - The sample data probably has no SmartShunt and no BME280: you'll see *Battery: no data* and no barometer trend. That's correct behaviour.
 - The 3-hour wind history and the barometer trend fill up while the server runs.
-- If you sail in the Baltic, try the warnings probe as well: `node packages/signalk-baltic-warnings/bin/probe.js 54.373 11.004` (from the repository folder).
+- If you sail in the Baltic, try the warnings probe as well: `node packages/sailwarnings/bin/probe.js 54.373 11.004` (from the repository folder).
 
 If something looks wrong, open an issue with a screenshot and the Signal K server log (**Server → Server Log**).
 
@@ -221,11 +221,11 @@ Signal K → **Appstore → Available**, search and install, then restart Signal
 |---|---|
 | **signalk-derived-data** | Calculates true wind from apparent wind + speed + heading. In its config enable *True Wind* (and *Ground Wind* if you have no log). |
 | **signalk-anchoralarm-plugin** | Anchor watch; Sailpartner shows the drift when you're at anchor |
-| **@signalk/freeboard-sk** | Chart plotter in the browser; shows warning areas from Baltic Warnings |
+| **@signalk/freeboard-sk** | Chart plotter in the browser; shows warning areas from Sailwarnings |
 | **signalk-logbook** *(optional)* | A full-featured logbook. Sailpartner keeps its own simple logbook, so this is only needed if you want its extra features |
 | **signalk-to-influxdb2** *(optional)* | Long-term history in InfluxDB (install InfluxDB via **OpenPlotter → Dashboards** first) |
 
-### 9. Install Sailpartner and Baltic Warnings
+### 9. Install Sailpartner and Sailwarnings
 
 Both plugins live in this repository. They have no native dependencies — nothing to compile.
 
@@ -237,7 +237,7 @@ node ~/sailpartner/scripts/install.js
 
 The script packs both plugins, installs them into `~/.signalk` and restarts Signal K. Then:
 
-1. Signal K → **Server → Plugin Config** → enable **Baltic Warnings** → **Submit**.
+1. Signal K → **Server → Plugin Config** → enable **Sailwarnings** → **Submit**.
 2. Enable **Sailpartner** → **Submit**.
 3. Open **http://localhost:3000/sailpartner/** — the Brief. The tabs at the bottom lead to **Passage** (plan a trip on the chart), **Instruments**, **Weather**, **Warnings**, **Battery**, **Logbook** and **NMEA** (all live data — check here first that your instruments arrive). It is also listed under **Webapps** in the Signal K menu and works on your phone or tablet on the boat's network (`http://openplotter.local:3000/sailpartner/`).
 
@@ -258,7 +258,7 @@ The first forecast arrives within a few seconds when the Pi has internet. The wi
 | Barometer / cabin paths | as in step 6 | Change if your sensor publishes elsewhere |
 | Home port, destinations | Heiligenhafen + western Baltic harbours | **Approximate positions, used only to sample the weather along the way — not for navigation.** Check and edit them |
 
-**Baltic Warnings** (Plugin Config → Baltic Warnings):
+**Sailwarnings** (Plugin Config → Sailwarnings):
 
 | Setting | Default | Notes |
 |---|---|---|
@@ -273,7 +273,7 @@ The first forecast arrives within a few seconds when the Pi has internet. The wi
 Run the probe once to see that the live sources are reachable and parsed correctly (example position: Heiligenhafen):
 
 ```bash
-cd ~/.signalk/node_modules/signalk-baltic-warnings
+cd ~/.signalk/node_modules/sailwarnings
 node bin/probe.js 54.373 11.004
 ```
 
@@ -321,10 +321,10 @@ It pulls the latest version from GitHub, reinstalls both plugins and restarts Si
 | True wind missing under way | Enable *True Wind* in signalk-derived-data; it needs boat speed and heading |
 | "No battery data" | Data Browser: `electrical.batteries.*`? Check MAC/key in step 7, Bluetooth range, `sudo apt install python3-venv` |
 | Barometer stays "trend after 3 h of data" | Normal for the first 2½ hours. If it never changes: is the pressure path right (step 6)? |
-| "warnings plugin not reachable" | Is **Baltic Warnings** enabled in Plugin Config? |
+| "warnings plugin not reachable" | Is **Sailwarnings** enabled in Plugin Config? |
 | Kiosk shows "Could not load the brief: HTTP 401" | Signal K security: log in once in Chromium (step 12.1) |
-| Plugins not listed after install | `sudo systemctl restart signalk`; check `~/.signalk/package.json` lists `sailpartner` and `signalk-baltic-warnings` |
-| Signal K log | `journalctl -u signalk -f` or Signal K admin → **Server Log**; enable debug for `sailpartner` / `signalk-baltic-warnings` there |
+| Plugins not listed after install | `sudo systemctl restart signalk`; check `~/.signalk/package.json` lists `sailpartner` and `sailwarnings` |
+| Signal K log | `journalctl -u signalk -f` or Signal K admin → **Server Log**; enable debug for `sailpartner` / `sailwarnings` there |
 
 ---
 
@@ -333,7 +333,7 @@ It pulls the latest version from GitHub, reinstalls both plugins and restarts Si
 Requires Node 18 or newer.
 
 ```bash
-cd packages/signalk-baltic-warnings && npm test
+cd packages/sailwarnings && npm test
 cd packages/sailpartner && npm test
 cd packages/sailpartner && npm run demo   # http://localhost:3333 — simulated morning, no boat needed
 ```

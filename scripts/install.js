@@ -17,7 +17,7 @@ const path = require('path')
 
 const REPO = path.resolve(__dirname, '..')
 const SK_DIR = process.env.SIGNALK_DIR || path.join(os.homedir(), '.signalk')
-const PACKAGES = ['signalk-baltic-warnings', 'sailpartner']
+const PACKAGES = ['sailwarnings', 'sailpartner']
 
 function run (cmd, cwd, { quiet = false, allowFail = false } = {}) {
   try {
@@ -69,6 +69,15 @@ if (!fs.existsSync(path.join(SK_DIR, 'package.json'))) {
   fs.writeFileSync(path.join(SK_DIR, 'package.json'), JSON.stringify({ name: 'signalk-server-config', version: '0.0.1', private: true, dependencies: {} }, null, 2))
 }
 
+// The warnings plugin used to be called signalk-baltic-warnings — remove the old one.
+try {
+  const deps = JSON.parse(fs.readFileSync(path.join(SK_DIR, 'package.json'), 'utf8')).dependencies || {}
+  if (deps['signalk-baltic-warnings']) {
+    console.log('== Removing the old signalk-baltic-warnings (now called sailwarnings)')
+    run('npm uninstall --no-audit --no-fund signalk-baltic-warnings', SK_DIR, { allowFail: true })
+  }
+} catch (e) { /* no package.json yet */ }
+
 console.log(`== Installing into ${SK_DIR}`)
 run(`npm install --no-audit --no-fund ${tarballs.map(q).join(' ')}`, SK_DIR)
 
@@ -83,5 +92,5 @@ if (process.platform === 'linux') {
 console.log(restarted ? 'Signal K restarted.' : 'Restart the Signal K server yourself now (Ctrl+C in its window, then start it again).')
 
 console.log('\nDone. Next:')
-console.log('  1. In Signal K: Server -> Plugin Config -> enable "Baltic Warnings" and "Sailpartner"')
+console.log('  1. In Signal K: Server -> Plugin Config -> enable "Sailwarnings" and "Sailpartner"')
 console.log('  2. Open http://localhost:3000/sailpartner/')

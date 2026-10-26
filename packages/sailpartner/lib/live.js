@@ -101,7 +101,7 @@ function boatState (s) {
   return 'moored'
 }
 
-// Signal K notifications raised by signalk-baltic-warnings (or anyone else) under
+// Signal K notifications raised by sailwarnings (or anyone else) under
 // notifications.navigation.warnings.* and notifications.environment.warnings.*
 function warnings (app) {
   const out = []

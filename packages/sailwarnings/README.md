@@ -1,4 +1,4 @@
-# signalk-baltic-warnings
+# sailwarnings
 
 A Signal K server plugin that collects navigational warnings for the Baltic, filters them by your own position and planned route, and publishes them where every Signal K app can see them:
 
@@ -14,7 +14,9 @@ A Signal K server plugin that collects navigational warnings for the Baltic, fil
 | **Digitraffic** (Fintraffic) | Finnish local nautical warnings, GeoJSON | ✅ enabled, field names read defensively — confirm with the probe |
 | **On-board barometer** | Your own pressure sensor, 3-hour tendency | ✅ enabled |
 | navtex.lv | Latvian NAVTEX messages | 🧪 experimental, off by default |
-| LTSA | Lithuanian national warnings | 🧪 experimental, off by default |
+
+The experimental and probe-only sources are switched off by default for a reason: their page formats are not confirmed yet. Their coastal warnings already arrive through BALTICO. If you switch one on and its page can't be read, the source shows *failed* with the reason instead of silently showing nothing.
+| LTSA ([hydro.eltsa.lt](https://hydro.eltsa.lt/nw/en.html)) | Lithuanian national warnings | 🧪 experimental, off by default |
 | DWD | Gale and storm warnings for coast and sea areas | 🔎 probe only — saves raw data, parser follows |
 | ELWIS | BfS and firing ranges (Todendorf/Putlos) | 🔎 probe only — URL and format to be confirmed |
 
@@ -51,7 +53,7 @@ It needs 2.5 hours of history before it reports. Default path `environment.outsi
 
 ## REST API
 
-Base: `http://<pi>:3000/plugins/signalk-baltic-warnings`
+Base: `http://<pi>:3000/plugins/sailwarnings`
 
 | Method | Path | |
 |---|---|---|
@@ -79,20 +81,20 @@ Until it's published to npm:
 
 ```bash
 cd ~/.signalk
-npm install /path/to/signalk-baltic-warnings-0.1.0.tgz
+npm install /path/to/sailwarnings-0.1.0.tgz
 sudo systemctl restart signalk
 ```
 
-Then enable it under **Server → Plugin Config → Baltic Warnings**. No native dependencies, Node 18 or newer.
+Then enable it under **Server → Plugin Config → Sailwarnings**. No native dependencies, Node 18 or newer.
 
 ### First run: check the live sources
 
 ```bash
-cd ~/.signalk/node_modules/signalk-baltic-warnings
+cd ~/.signalk/node_modules/sailwarnings
 node bin/probe.js 54.373 11.004
 ```
 
-This fetches every source once, prints the parsed warnings sorted for your position and saves raw responses to `./probe-output/`. Those raw files are what's needed to finish the DWD and ELWIS parsers and to confirm the Digitraffic field names.
+This fetches every source once, prints the parsed warnings sorted for your position and writes `probe-output/probe-report.txt`: for every source whether it worked (or the exact reason it failed — DNS, timeout, HTTP status, unreadable page) and the start of every page it loaded. That one file is what's needed to fix a failing source or finish the DWD and ELWIS parsers. From the repository folder you can run it as `node packages/sailwarnings/bin/probe.js 54.373 11.004`.
 
 ## Development
 

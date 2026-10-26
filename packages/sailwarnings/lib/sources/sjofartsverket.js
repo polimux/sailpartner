@@ -21,6 +21,7 @@ module.exports = {
   id: 'sjofartsverket',
   name: 'BALTICO / Sjöfartsverket (all Baltic states)',
   defaultEnabled: true,
+  urls: PAGES.map(p => p.url),
   defaultIntervalMin: 30,
   attribution: 'Swedish Maritime Administration (Sjöfartsverket), BALTICO',
   parsePage,

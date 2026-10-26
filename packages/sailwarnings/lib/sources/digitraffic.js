@@ -88,11 +88,12 @@ module.exports = {
   id: 'digitraffic',
   name: 'Digitraffic (Finland, local warnings)',
   defaultEnabled: true,
+  urls: [URL],
   defaultIntervalMin: 15,
   attribution: 'Source: Fintraffic / digitraffic.fi, license CC 4.0 BY',
   parse,
   async fetch ({ http, now, options }) {
-    const { json, body } = await http.fetchJson(URL, { headers: { 'Digitraffic-User': 'signalk-baltic-warnings' } })
+    const { json, body } = await http.fetchJson(URL, { headers: { 'Digitraffic-User': 'sailwarnings/0.2' } })
     return { warnings: parse(json, { lang: options.language, now }), raw: [{ url: URL, body }] }
   }
 }

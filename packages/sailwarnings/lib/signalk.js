@@ -49,7 +49,7 @@ function clearValue () {
 
 // Deterministic UUID (v5-like) so resource ids stay stable across restarts.
 function uuidFor (id) {
-  const h = crypto.createHash('sha1').update('signalk-baltic-warnings:' + id).digest('hex')
+  const h = crypto.createHash('sha1').update('sailwarnings:' + id).digest('hex')
   const v = ((parseInt(h[16], 16) & 0x3) | 0x8).toString(16)
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-5${h.slice(13, 16)}-${v}${h.slice(17, 20)}-${h.slice(20, 32)}`
 }

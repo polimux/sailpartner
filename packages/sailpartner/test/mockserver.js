@@ -50,7 +50,7 @@ function mockApp () {
     getDataDirPath: () => dir,
     getSelfPath: p => self[p],
     // Stores deltas like the server does, so notifications from another plugin
-    // (signalk-baltic-warnings in the demo) appear under the self data.
+    // (sailwarnings in the demo) appear under the self data.
     handleMessage: (id, msg) => {
       for (const u of msg.updates || []) {
         for (const v of u.values || []) {

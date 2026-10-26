@@ -13,7 +13,7 @@ The morning brief screen for a sailing boat running Signal K. One look at the ch
 | Verdict | One answer for here and today: *Good sailing*, *Sail this morning*, *Sail until 15h*, *Reef before 12h*, *Stay in*. After 18h it looks at tomorrow |
 | Two sentences | What the wind does (Beaufort, front, rain) and what to do about it |
 | Day ribbon | 7h–19h at your position. One bar per hour: the solid part is the mean wind, the lighter top reaches up to the gusts. Green / amber (reef) / red. Dashed line: reef from gusts. Wind arrows, rain drops, *now*, the front and the dark hours after sunset |
-| Needs your attention | At most three cards, only when something needs you: barometer falling or rising fast, warnings near you (from `signalk-baltic-warnings`), battery low, anchor drifting. Otherwise "Nothing needs your attention" |
+| Needs your attention | At most three cards, only when something needs you: barometer falling or rising fast, warnings near you (from `sailwarnings`), battery low, anchor drifting. Otherwise "Nothing needs your attention" |
 | Status line | What's fine, at a glance: battery, wind now, cabin, warning sources |
 
 ### Passage — a trip
@@ -27,7 +27,7 @@ The morning brief screen for a sailing boat running Signal K. One look at the ch
 | Trip verdict | e.g. *Reef before 12h · front at 13h, 20 nm out* |
 | Better departure | Sailpartner tries every departure in 30-minute steps today and tomorrow (daylight) and suggests one with less strong wind, less rain and a daylight arrival. *Use* applies it |
 | Along the route | The same gust bars, but for where you'll be each hour at your planning speed, with the point of sail for that leg and rain |
-| Warnings on this route | From `signalk-baltic-warnings`, within the route corridor; nearby ones greyed out |
+| Warnings on this route | From `sailwarnings`, within the route corridor; nearby ones greyed out |
 
 Without a trip the right side lists your saved harbours:
 
@@ -51,7 +51,7 @@ Bow-up wind dial (A = apparent, T = true), true wind, 10-minute gust, the last 3
 
 ![Warnings](docs/warnings.png)
 
-Everything from `signalk-baltic-warnings`: *Near me*, *On route* (the route from the Passage tab) or *All Baltic*, sorted by severity and distance. Tap a warning for its full official text, validity and source. Source health at the bottom right, with *Refresh*.
+Everything from `sailwarnings`: *Near me*, *On route* (the route from the Passage tab) or *All Baltic*, sorted by severity and distance. Tap a warning for its full official text, validity and source. Source health at the bottom right, with *Refresh*.
 
 ### Battery
 
@@ -134,7 +134,7 @@ Enable **Sailpartner** in *Server → Plugin Config*, open `http://<pi>:3000/sai
 | GET | `/logbook/export?day=…` | the day as CSV |
 | GET | `/data?since=<seq>` | live data: one row per path and source, recent updates, sources |
 
-The page sends the planned route to `signalk-baltic-warnings` (`PUT /plugins/signalk-baltic-warnings/route`), so warnings near it are flagged "on route".
+The page sends the planned route to `sailwarnings` (`PUT /plugins/sailwarnings/route`), so warnings near it are flagged "on route".
 
 ## Development
 
@@ -143,4 +143,4 @@ npm test
 npm run demo   # http://localhost:3333 — simulated morning, no boat needed
 ```
 
-The demo also runs `signalk-baltic-warnings` from the repository with a saved copy of the BALTICO warnings page, simulates live NMEA 2000 / NMEA 0183 / plugin traffic for the NMEA tab, and seeds a week of battery history and yesterday's logbook. All demo data is made up.
+The demo also runs `sailwarnings` from the repository with a saved copy of the BALTICO warnings page, simulates live NMEA 2000 / NMEA 0183 / plugin traffic for the NMEA tab, and seeds a week of battery history and yesterday's logbook. All demo data is made up.

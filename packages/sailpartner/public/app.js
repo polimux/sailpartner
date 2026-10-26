@@ -2,7 +2,7 @@
 'use strict'
 
 const API = '/plugins/sailpartner'
-const WARN_API = '/plugins/signalk-baltic-warnings'
+const WARN_API = '/plugins/sailwarnings'
 const NS = 'http://www.w3.org/2000/svg'
 const C = {
   bg: '#0b1520', panel: '#13202e', panel2: '#0f1a26', line: '#24364a', grid: '#1f3044', text: '#e8eef5', muted: '#8aa0b5', dim: '#5d7085',
@@ -18,7 +18,7 @@ const state = {
   page: PAGES.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'brief',
   brief: null,
   passage: null,
-  warnings: null, // full list from signalk-baltic-warnings, null = not reachable
+  warnings: null, // full list from sailwarnings, null = not reachable
   sources: null,
   weather: null,
   battery: null,
@@ -509,7 +509,7 @@ function pickPanel (ps) {
 function routeWarnings (hasTrip) {
   if (!state.warnings) {
     T(896, 550, 'Warnings plugin not reachable.', 17, C.muted)
-    T(896, 576, 'Enable Baltic Warnings in Signal K.', 17, C.muted)
+    T(896, 576, 'Enable Sailwarnings in Signal K.', 17, C.muted)
     return
   }
   const onRoute = w => (hasTrip ? (w.relevance === 'route' || w.relevance === 'here') : (w.relevance === 'here' || w.relevance === 'nearby'))
@@ -988,7 +988,7 @@ function renderWarnings () {
   header('Warnings')
   if (!state.warnings) {
     T(40, 140, 'The warnings plugin is not reachable.', 22, C.muted)
-    T(40, 176, 'Install and enable "Baltic Warnings" (signalk-baltic-warnings) in Signal K.', 18, C.muted)
+    T(40, 176, 'Install and enable "Sailwarnings" (sailwarnings) in Signal K.', 18, C.muted)
     nav('warnings'); return
   }
   const rank = { emergency: 4, alarm: 4, warn: 3, alert: 2 }
@@ -1243,7 +1243,7 @@ async function clearTrip () {
   render()
 }
 
-// Tell signalk-baltic-warnings about the route so warnings near it are flagged "on route".
+// Tell sailwarnings about the route so warnings near it are flagged "on route".
 async function syncWarningsRoute () {
   const tr = state.passage && state.passage.trip
   try {

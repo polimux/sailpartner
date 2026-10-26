@@ -9,13 +9,13 @@ const { Barometer } = require('./lib/barometer')
 const { assess, sortWarnings, inScope, SEVERITY_RANK } = require('./lib/relevance')
 const sk = require('./lib/signalk')
 
-const PLUGIN_ID = 'signalk-baltic-warnings'
+const PLUGIN_ID = 'sailwarnings'
 
 module.exports = function (app, deps = {}) {
   const httpClient = deps.http || http
   const plugin = {
     id: PLUGIN_ID,
-    name: 'Baltic Warnings',
+    name: 'Sailwarnings',
     description: 'Navigational warnings for the Baltic (BALTICO/NAVTEX for all Baltic states, Digitraffic, on-board barometer) filtered by position and route'
   }
 
@@ -257,7 +257,7 @@ module.exports = function (app, deps = {}) {
   }
 
   plugin.registerWithRouter = function (router) {
-    // GET /plugins/signalk-baltic-warnings/warnings?scope=relevant|nearby|route|all
+    // GET /plugins/sailwarnings/warnings?scope=relevant|nearby|route|all
     router.get('/warnings', (req, res) => {
       if (!store) return res.status(503).json({ error: 'not started' })
       const scope = req.query.scope || 'relevant'

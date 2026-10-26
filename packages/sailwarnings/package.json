@@ -1,10 +1,10 @@
 {
-  "name": "signalk-baltic-warnings",
-  "version": "0.1.1",
+  "name": "sailwarnings",
+  "version": "0.2.0",
   "description": "Collects navigational warnings for the Baltic (BALTICO/NAVTEX, Digitraffic, on-board barometer), filters them by own position and planned route, and publishes them as Signal K notifications, chart regions/notes and a REST API.",
   "main": "index.js",
   "bin": {
-    "baltic-warnings-probe": "bin/probe.js"
+    "sailwarnings-probe": "bin/probe.js"
   },
   "scripts": {
     "test": "node --test test/*.test.js",
