@@ -146,7 +146,7 @@ try {
   warnings = createWarnings(app, { http: offline })
   routers['sailwarnings'] = mockRouter()
   warnings.registerWithRouter(routers['sailwarnings'])
-  warnings.start({ sources: { digitraffic: { enabled: false } } })
+  warnings.start({ sources: { dwd: { enabled: false }, finland: { enabled: false } } })
 } catch (e) {
   console.log(`(sailwarnings not found next to this package — warnings will be empty: ${e.message})`)
 }

@@ -63,27 +63,9 @@ module.exports = {
   navtexlv: textSource({
     id: 'navtexlv',
     name: 'navtex.lv (Latvia)',
-    urls: ['https://www.navtex.lv/', 'http://www.navtex.lv/'],
+    urls: ['https://navtex.lv/', 'https://www.navtex.lv/', 'http://navtex.lv/'],
     attribution: 'Latvian Hydrographic Service',
     coveredBy: 'BALTICO'
-  }),
-  // Official portal named in Lithuania's 2024 national report to the IHO (BSHC29).
-  ltsa: textSource({
-    id: 'ltsa',
-    name: 'LTSA (Lithuania)',
-    urls: ['https://hydro.eltsa.lt/nw/en.html'],
-    attribution: 'Lithuanian Transport Safety Administration',
-    coveredBy: 'BALTICO'
-  }),
-  dwd: probeSource({
-    id: 'dwd',
-    name: 'DWD sea and coast warnings (probe)',
-    urls: [
-      'https://s3.eu-central-1.amazonaws.com/app-prod-static.warnwetter.de/v16/warnings_coast_en.json',
-      'https://s3.eu-central-1.amazonaws.com/app-prod-static.warnwetter.de/v16/sea_warning_text.json'
-    ],
-    attribution: 'Deutscher Wetterdienst',
-    note: 'Saves raw responses only; parser follows once the live format is confirmed.'
   }),
   elwis: probeSource({
     id: 'elwis',

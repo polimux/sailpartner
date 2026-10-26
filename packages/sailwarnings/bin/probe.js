@@ -18,7 +18,24 @@ const SOURCES = require('../lib/sources')
 const { assess, sortWarnings } = require('../lib/relevance')
 const pkg = require('../package.json')
 
-const RAW_IN_REPORT = 3000
+const RAW_IN_REPORT = 5000
+const { htmlToText } = require('../lib/html')
+
+// The useful part of a response for the report: readable text of web pages,
+// addresses found in scripts, the start of everything else.
+function excerpt (url, body) {
+  if (/\.js(\?|$)/.test(url)) {
+    const urls = [...new Set(body.match(/https?:\/\/[^"'\s\\)]+/g) || [])]
+    return ['Addresses in this script:', ...urls.slice(0, 80).map(u => '  ' + u)]
+  }
+  if (/^\s*(<!doctype|<html)/i.test(body)) {
+    // skip menus: start at the main content when the page marks it
+    const at = ['<main', 'id="content"', 'id="main"'].map(m => body.indexOf(m)).filter(i => i > 0).sort((a, b) => a - b)[0] || 0
+    const text = htmlToText(body.slice(at)).replace(/\n{3,}/g, '\n\n').trim()
+    return ['Page text:', text.slice(0, RAW_IN_REPORT)]
+  }
+  return ['Start:', body.slice(0, RAW_IN_REPORT)]
+}
 
 async function main () {
   const [lat, lon] = process.argv.slice(2).map(Number)
@@ -35,28 +52,35 @@ async function main () {
   for (const src of SOURCES) {
     process.stdout.write(`\n== ${src.name} ==\n`)
     report.push('='.repeat(78), src.name, '='.repeat(78))
+    let raw = null
     try {
-      const { warnings } = await src.fetch({ http, now: new Date(), options: { language: 'en' } })
-      const line = src.probeOnly ? `OK (probe only: ${src.note})` : `OK: ${warnings.length} warnings read`
+      const result = await src.fetch({ http, now: new Date(), options: { language: 'en' } })
+      const warnings = result.warnings
+      raw = result.raw
+      const line = src.probeOnly ? `OK (probe only: ${src.note})` : `OK: ${warnings.length} warnings read${result.note ? ' — ' + result.note : ''}`
       process.stdout.write(line + '\n')
       report.push(line)
       all.push(...warnings.map(w => ({ ...w, sources: [src.id] })))
-      for (const w of warnings.slice(0, 3)) report.push(`  e.g. ${w.label}: ${w.title}`)
+      for (const w of warnings.slice(0, 5)) report.push(`  e.g. ${w.label}: ${w.title}${w.validTo ? ' (until ' + w.validTo + ')' : ''}`)
     } catch (e) {
       process.stdout.write(`FAILED: ${e.message}\n`)
       report.push(`FAILED: ${e.message}`)
+      raw = e.raw || null
     }
-    // the raw pages, fetched again so the report has them even when parsing failed
-    for (const [i, url] of (src.urls || []).entries()) {
-      report.push('', `--- ${url}`)
-      try {
-        const body = await http.fetchText(url)
-        fs.writeFileSync(path.join(outDir, `${src.id}-${i}.txt`), `${url}\n\n${body}`)
-        report.push(`${body.length} characters, saved as ${src.id}-${i}.txt. Start:`, body.slice(0, RAW_IN_REPORT))
-      } catch (e) {
-        report.push(`could not load: ${e.message}`)
-        if (e.body) report.push('server answered:', e.body)
+    // what the servers sent — fetched again if the source did not hand it back
+    if (!raw || !raw.length) {
+      raw = []
+      for (const url of src.urls || []) {
+        try { raw.push({ url, body: await http.fetchText(url) }) } catch (e) {
+          report.push('', `--- ${url}`, `could not load: ${e.message}`)
+          if (e.body) report.push('server answered:', e.body)
+        }
       }
+    }
+    for (const [i, { url, body }] of raw.entries()) {
+      fs.writeFileSync(path.join(outDir, `${src.id}-${i}.txt`), `${url}\n\n${body}`)
+      report.push('', `--- ${url}`, `${body.length} characters, saved as ${src.id}-${i}.txt`)
+      report.push(...excerpt(url, body))
     }
     report.push('')
   }

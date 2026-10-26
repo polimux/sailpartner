@@ -1,6 +1,7 @@
 'use strict'
 
 const pkg = require('../package.json')
+const { fetchTextWithAia } = require('./aia')
 const USER_AGENT = `sailwarnings/${pkg.version} (Signal K plugin; +https://github.com/polimux/sailpartner)`
 
 // Node's fetch reports network problems only as "fetch failed"; the real reason
@@ -18,13 +19,20 @@ function describeError (e, url, timeoutMs = 20000) {
     ETIMEDOUT: 'connection timed out',
     UND_ERR_CONNECT_TIMEOUT: 'connection timed out',
     CERT_HAS_EXPIRED: 'the site\'s certificate has expired',
-    UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'certificate could not be verified',
+    UNABLE_TO_VERIFY_LEAF_SIGNATURE: 'the site sends an incomplete certificate chain',
+    UNABLE_TO_GET_ISSUER_CERT_LOCALLY: 'the site sends an incomplete certificate chain',
     DEPTH_ZERO_SELF_SIGNED_CERT: 'self-signed certificate',
     ERR_TLS_CERT_ALTNAME_INVALID: 'certificate does not match the host name'
   }
   if (code) return `${known[code] || code} (${host})`
   if (c && c.message) return `${c.message} (${host})`
   return `${(e && e.message) || String(e)} (${host})`
+}
+
+const INCOMPLETE_CHAIN = new Set(['UNABLE_TO_VERIFY_LEAF_SIGNATURE', 'UNABLE_TO_GET_ISSUER_CERT_LOCALLY'])
+function causeCode (e) {
+  const c = e && e.cause
+  return c && (c.code || (c.errors && c.errors[0] && c.errors[0].code))
 }
 
 async function fetchText (url, { timeoutMs = 20000, headers = {} } = {}) {
@@ -36,6 +44,16 @@ async function fetchText (url, { timeoutMs = 20000, headers = {} } = {}) {
       redirect: 'follow'
     })
   } catch (e) {
+    // server sent an incomplete certificate chain: fetch the missing piece like a browser does
+    if (url.startsWith('https:') && INCOMPLETE_CHAIN.has(causeCode(e))) {
+      try {
+        return await fetchTextWithAia(url, { timeoutMs, headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'en,de;q=0.8', ...headers } })
+      } catch (e2) {
+        const err = new Error(`${describeError(e, url, timeoutMs)}; repair failed: ${e2.message}`)
+        err.cause = e
+        throw err
+      }
+    }
     const err = new Error(describeError(e, url, timeoutMs))
     err.cause = e
     throw err

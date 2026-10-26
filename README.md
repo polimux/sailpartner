@@ -10,7 +10,7 @@ A morning brief and logbook screen for a Hanse 323, running on a Raspberry Pi wi
 
 | Package | What it does | Status |
 |---|---|---|
-| [`sailwarnings`](packages/sailwarnings) | Signal K plugin: navigational warnings for the Baltic (BALTICO/NAVTEX for all Baltic states, Digitraffic, on-board barometer), filtered by position and route, published as notifications, chart regions/notes and a REST API | v0.1, tests passing, live sources to be confirmed on the Pi |
+| [`sailwarnings`](packages/sailwarnings) | Signal K plugin: navigational warnings for the Baltic (BALTICO/NAVTEX for all Baltic states, DWD coastal wind warnings, Traficom, on-board barometer), filtered by position and route, published as notifications, chart regions/notes and a REST API | v0.1, tests passing, live sources to be confirmed on the Pi |
 | [`sailpartner`](packages/sailpartner) | Signal K plugin + web app: **Brief** (verdict and day ribbon for here, attention cards), **Passage** (tap a route on the chart: weather along the way at your speed, trip verdict, better departure time, warnings on the route), **Instruments** (wind dial, battery, barometer), **Weather** (48 h), **Warnings**, **Battery** (7 days), **Logbook** (automatic and manual entries, CSV export) and **NMEA** (all live data with PGN/sentence and source) | v0.3, tests passing, not yet run on a boat |
 
 ## Contents
@@ -266,7 +266,7 @@ The first forecast arrives within a few seconds when the Pi has internet. The wi
 | Route corridor | 5 nm each side | Warnings this close to the planned route are "on route" |
 | Notifications for | near me or on my route | What raises a Signal K notification |
 | Barometer path | `environment.outside.pressure` | Same sensor as above |
-| Sources | BALTICO, Digitraffic on; Latvia, Lithuania off (experimental); DWD, ELWIS probe only | |
+| Sources | BALTICO, DWD, Traficom on; Latvia, Lithuania off (experimental); ELWIS probe only | |
 
 ### 11. Check the warning sources
 
@@ -343,4 +343,4 @@ cd packages/sailpartner && npm run demo   # http://localhost:3333 — simulated 
 - Raspberry Pi 4/5, PiCAN-M HAT (NMEA 2000), BME280 barometer on I2C, 10.1" 1280×800 touch display
 - OpenPlotter: CAN Bus, I2C, Signal K, Dashboards (InfluxDB 2)
 - Signal K plugins: `signalk-victron-ble` (SmartShunt), `signalk-derived-data`, `signalk-anchoralarm-plugin`, `@signalk/freeboard-sk`, optional `signalk-logbook` and `signalk-to-influxdb2`
-- Forecasts: [Open-Meteo](https://open-meteo.com) (wind, gusts, rain, pressure, waves). Warnings: Sjöfartsverket/BALTICO, Fintraffic Digitraffic
+- Forecasts: [Open-Meteo](https://open-meteo.com) (wind, gusts, rain, pressure, waves). Warnings: Sjöfartsverket/BALTICO, Deutscher Wetterdienst, Traficom

@@ -11,14 +11,14 @@ A Signal K server plugin that collects navigational warnings for the Baltic, fil
 | Source | Covers | Status |
 |---|---|---|
 | **BALTICO / Sjöfartsverket** (NAVTEX + VHF pages) | Coastal warnings of all Baltic states: German, Danish, Polish, Lithuanian, Latvian, Estonian, Finnish, Swedish, Russian, plus BALTIC SEA NAV WARNs | ✅ enabled, parser tested against the live format |
-| **Digitraffic** (Fintraffic) | Finnish local nautical warnings, GeoJSON | ✅ enabled, field names read defensively — confirm with the probe |
+| **DWD** coastal wind warnings | Official near-gale, gale and storm warnings for the German coastal areas, with area polygons (DWD map service `dwd:Warnungen_Kueste`; falls back to the WarnWetter app file) | ✅ enabled, 🧪 map layer to be confirmed with the probe |
+| **Traficom** (Finland) | Finnish local nautical warnings. Digitraffic stopped carrying them in 2026; Traficom publishes them in its open WFS service since 13 Jan 2026. The layer is looked up by name. | ✅ enabled, 🧪 layer to be confirmed with the probe |
 | **On-board barometer** | Your own pressure sensor, 3-hour tendency | ✅ enabled |
-| navtex.lv | Latvian NAVTEX messages | 🧪 experimental, off by default |
+| navtex.lv | Latvian NAVTEX messages | 🧪 off by default. The site sends an incomplete certificate chain; the plugin fetches the missing certificate like a browser does |
+| LTSA ([hydro.eltsa.lt](https://hydro.eltsa.lt/nw/en.html)) | Lithuanian national warnings. The page is an ArcGIS map; the plugin finds the map service in its script | 🧪 off by default |
+| ELWIS | BfS and firing ranges (Todendorf/Putlos) | 🔎 probe only — parser follows |
 
-The experimental and probe-only sources are switched off by default for a reason: their page formats are not confirmed yet. Their coastal warnings already arrive through BALTICO. If you switch one on and its page can't be read, the source shows *failed* with the reason instead of silently showing nothing.
-| LTSA ([hydro.eltsa.lt](https://hydro.eltsa.lt/nw/en.html)) | Lithuanian national warnings | 🧪 experimental, off by default |
-| DWD | Gale and storm warnings for coast and sea areas | 🔎 probe only — saves raw data, parser follows |
-| ELWIS | BfS and firing ranges (Todendorf/Putlos) | 🔎 probe only — URL and format to be confirmed |
+Traficom, navtex.lv and LTSA only add local warnings; the coastal warnings of Finland, Latvia and Lithuania already arrive through BALTICO. While BALTICO works, a failure of one of them is shown in grey ("not reachable — its warnings still arrive via BALTICO") and not as an alarm on the Brief. A source that fails three times in a row is retried every 6 hours; the Refresh button always tries.
 
 German coastal NAV WARNs (e.g. the Fehmarn prohibited-area buoys) already arrive through BALTICO.
 

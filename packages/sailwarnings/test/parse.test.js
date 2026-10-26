@@ -7,7 +7,7 @@ const path = require('path')
 const { parsePositions, geometryFromText, distanceNm } = require('../lib/geo')
 const { parseDtg, parseValidity, classify } = require('../lib/navtext')
 const sjo = require('../lib/sources/sjofartsverket')
-const digitraffic = require('../lib/sources/digitraffic')
+const { featuresToWarnings } = require('../lib/sources/discover')
 
 const NOW = new Date('2026-10-26T08:00:00Z')
 const html = fs.readFileSync(path.join(__dirname, 'fixtures', 'sjofartsverket-navtex.html'), 'utf8')
@@ -108,7 +108,7 @@ test('circle geometry from radius text', () => {
   assert.ok(distanceNm(g.circle.center, { latitude: 59.81133, longitude: 27.41217 }) < 0.01)
 })
 
-test('Digitraffic GeoJSON is mapped defensively', () => {
+test('Finnish GeoJSON with unknown field names is mapped defensively', () => {
   const json = {
     type: 'FeatureCollection',
     features: [{
@@ -127,10 +127,49 @@ test('Digitraffic GeoJSON is mapped defensively', () => {
       }
     }]
   }
-  const [w] = digitraffic.parse(json, { lang: 'en', now: NOW })
+  const [w] = featuresToWarnings(json.features, { issuer: 'FINNISH', prefix: 'finnish-local', now: NOW })
   assert.equal(w.id, 'finnish-local-572')
   assert.equal(w.title, 'MÄNTYLUOTO SOUTHERN FAIRWAY')
   assert.equal(w.category, 'aton')
   assert.deepEqual(w.geometry.positions, [{ latitude: 61.5808, longitude: 21.4127 }])
-  assert.deepEqual(w.areas, ['SEA OF BOTHNIA'])
+  assert.equal(w.issued, '2026-10-22T16:24:00.000Z')
+})
+
+test('DWD coastal warnings: polygons, names, English preferred, lat/lon order detected', () => {
+  const dwd = require('../lib/sources/dwd')
+  const ring = [[54.2, 10.8], [54.2, 11.4], [54.6, 11.4], [54.6, 10.8], [54.2, 10.8]] // lat,lon as GeoServer WFS 2.0 sends it
+  const f = (lang, event, headline) => ({
+    type: 'Feature',
+    geometry: { type: 'Polygon', coordinates: [ring] },
+    properties: { AREADESC: 'Fehmarnbelt', IDENTIFIER: 'abc.123', LANGUAGE: lang, EVENT: event, HEADLINE: headline, ONSET: '2026-10-26T12:00:00Z', EXPIRES: '2026-10-27T06:00:00Z', SENT: '2026-10-26T11:03:00Z' }
+  })
+  const ws = dwd.parseWfs({ features: [f('de-DE', 'STURMBÖEN', 'Amtliche WARNUNG vor STURM'), f('en-GB', 'gale', 'Official GALE WARNING')] })
+  assert.equal(ws.length, 1)
+  assert.equal(ws[0].label, 'DWD · Fehmarnbelt')
+  assert.equal(ws[0].title, 'Gale warning')
+  assert.equal(ws[0].severity, 'alarm')
+  assert.equal(ws[0].validTo, '2026-10-27T06:00:00Z')
+  assert.equal(ws[0].geometry.polygon[0].latitude, 54.2)
+  const { assess } = require('../lib/relevance')
+  assert.equal(assess(ws[0], { position: { latitude: 54.373, longitude: 11.004 } }).relevance, 'here')
+  // the app file the probe saw: near gale is a reef warning, not an alarm
+  const app = dwd.parseApp({ time: 1793044271698, warnings: { 501000008: [{ warnId: 'x.MUL', level: 2, event: 'near gale', headline: 'Official NEAR GALE WARNING', description: 'There is a risk of near gale.' }] } })
+  assert.equal(app[0].severity, 'warn')
+  assert.equal(app[0].title, 'Near gale warning')
+})
+
+test('Traficom: the warnings layer is found in the WFS capabilities', () => {
+  const fin = require('../lib/sources/finland')
+  const xml = `<wfs:WFS_Capabilities><FeatureTypeList>
+    <FeatureType><Name>avoin:Ahti_Limit_L</Name><Title>Ahti_Limit_L</Title></FeatureType>
+    <FeatureType><Name>avoin:merivaroitukset_voimassa</Name><Title>Merivaroitukset</Title></FeatureType>
+  </FeatureTypeList></wfs:WFS_Capabilities>`
+  assert.equal(fin.findLayer(xml).hit.name, 'avoin:merivaroitukset_voimassa')
+  assert.equal(fin.findLayer('<x><FeatureType><Name>a:b</Name></FeatureType></x>').hit, undefined)
+})
+
+test('LTSA: ArcGIS service addresses are found in the app script', () => {
+  const ltsa = require('../lib/sources/ltsa')
+  const js = 'var a={url:"https://gis.eltsa.lt/arcgis/rest/services/NW/NavWarnings/FeatureServer/0",b:"https://js.arcgis.com/4.18/"};x("https://gis.eltsa.lt/arcgis/rest/services/NW/Base/MapServer")'
+  assert.deepEqual(ltsa.serviceUrls(js), ['https://gis.eltsa.lt/arcgis/rest/services/NW/NavWarnings/FeatureServer/0', 'https://gis.eltsa.lt/arcgis/rest/services/NW/Base/MapServer'])
 })
