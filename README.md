@@ -2,17 +2,22 @@
 
 A morning brief and logbook screen for a Hanse 323, running on a Raspberry Pi with OpenPlotter and Signal K, fed by NMEA 2000.
 
-![Morning brief with a planned trip](packages/sailpartner/docs/brief-trip.png)
+| Brief — here, today | Passage — a trip |
+|---|---|
+| ![Brief](packages/sailpartner/docs/brief.png) | ![Passage](packages/sailpartner/docs/passage.png) |
 
 ## Packages
 
 | Package | What it does | Status |
 |---|---|---|
 | [`signalk-baltic-warnings`](packages/signalk-baltic-warnings) | Signal K plugin: navigational warnings for the Baltic (BALTICO/NAVTEX for all Baltic states, Digitraffic, on-board barometer), filtered by position and route, published as notifications, chart regions/notes and a REST API | v0.1, tests passing, live sources to be confirmed on the Pi |
-| [`sailpartner`](packages/sailpartner) | Signal K plugin + web app: morning brief (verdict, written summary, route weather at 5 kn, live wind, rain, battery, barometer). Detail pages for weather, warnings, battery, logbook and chart follow | v0.1, brief page working, tests passing |
+| [`sailpartner`](packages/sailpartner) | Signal K plugin + web app: **Brief** (verdict and day ribbon for here, attention cards), **Passage** (tap a route on the chart: weather along the way at your speed, trip verdict, better departure time, warnings on the route), **Instruments** (wind dial, battery, barometer). Weather, Warnings, Battery and Logbook pages follow | v0.2, tests passing, not yet run on a boat |
 
 ## Contents
 
+- [Try it on your laptop](#try-it-on-your-laptop)
+  - [A. Demo mode — no boat, no Signal K](#a-demo-mode--no-boat-no-signal-k)
+  - [B. A real Signal K server with recorded boat data](#b-a-real-signal-k-server-with-recorded-boat-data)
 - [Installation on the Raspberry Pi](#installation-on-the-raspberry-pi)
   1. [What you need](#1-what-you-need)
   2. [Flash OpenPlotter](#2-flash-openplotter)
@@ -29,6 +34,61 @@ A morning brief and logbook screen for a Hanse 323, running on a Raspberry Pi wi
   13. [Updating](#13-updating)
   14. [Troubleshooting](#14-troubleshooting)
 - [Development](#development)
+
+---
+
+## Try it on your laptop
+
+You need [Node.js](https://nodejs.org) 18 or newer (the LTS installer is fine) and [git](https://git-scm.com).
+
+### A. Demo mode — no boat, no Signal K
+
+A simulated morning in Heiligenhafen on 26 October 2026 with a front coming in. Wind, gusts, rain and pressure are made up, the warnings come from a saved copy of the BALTICO page. Nothing to install, works offline (only the chart tiles need internet).
+
+```bash
+git clone https://github.com/polimux/sailpartner.git
+cd sailpartner/packages/sailpartner
+npm run demo
+```
+
+Open **http://localhost:3333** in your browser and stop the demo with **Ctrl+C**.
+
+Things to try:
+
+- **Brief**: the verdict, the day ribbon with gust bars, the attention cards.
+- **Passage**: pick *Kühlungsborn* or tap points on the chart. Change departure and speed with −/+, tap *Use* on the better departure.
+- **Instruments**: wind dial, wind history, battery, barometer.
+
+To see it as on the boat's 10.1" screen, make the browser window 1280 × 800 or go full screen (F11 on Windows/Linux, Ctrl+Cmd+F on Mac).
+
+### B. A real Signal K server with recorded boat data
+
+This is the important test: it checks that Sailpartner reads the Signal K data paths correctly and fetches the real forecast from Open-Meteo (internet needed). The steps below are for **Mac or Linux**; the install script does not run on Windows (use WSL there).
+
+1. Install and start Signal K with its built-in sample NMEA 2000 data:
+   ```bash
+   npm install -g signalk-server
+   signalk-server --sample-n2k-data --override-timestamps
+   ```
+   (`--override-timestamps` replaces the recorded timestamps with the current time.)
+2. Open **http://localhost:3000** and create the admin user.
+3. In a second terminal, install the two plugins from your clone of this repository:
+   ```bash
+   bash sailpartner/scripts/install-on-pi.sh
+   ```
+   It says it can't restart Signal K — that's expected on a laptop.
+4. Stop Signal K with **Ctrl+C** in the first terminal and start it again with the same command.
+5. In Signal K: **Server → Plugin Config** → enable **Sailpartner** and **Baltic Warnings** → **Submit** each.
+6. Open **http://localhost:3000/sailpartner/**.
+
+What to expect:
+
+- The sample data comes from somewhere else than the Baltic, so the place shows as *At sea* or *At anchor*, and the Baltic warnings will mostly be "far".
+- The sample data probably has no SmartShunt and no BME280: you'll see *Battery: no data* and no barometer trend. That's correct behaviour.
+- The 3-hour wind history and the barometer trend fill up while the server runs.
+- If you sail in the Baltic, try the warnings probe as well: `node ~/.signalk/node_modules/signalk-baltic-warnings/bin/probe.js 54.373 11.004`.
+
+If something looks wrong, open an issue with a screenshot and the Signal K server log (**Server → Server Log**).
 
 ---
 
@@ -164,7 +224,7 @@ The script packs both plugins, installs them into `~/.signalk` and restarts Sign
 
 1. Signal K → **Server → Plugin Config** → enable **Baltic Warnings** → **Submit**.
 2. Enable **Sailpartner** → **Submit**.
-3. Open **http://localhost:3000/sailpartner/** — the morning brief. It is also listed under **Webapps** in the Signal K menu and works on your phone or tablet on the boat's network (`http://openplotter.local:3000/sailpartner/`).
+3. Open **http://localhost:3000/sailpartner/** — the Brief. The tabs at the bottom lead to **Passage** (plan a trip on the chart) and **Instruments**. It is also listed under **Webapps** in the Signal K menu and works on your phone or tablet on the boat's network (`http://openplotter.local:3000/sailpartner/`).
 
 The first forecast arrives within a few seconds when the Pi has internet. The wind history fills over the first 3 hours, the barometer trend after 2½ hours.
 

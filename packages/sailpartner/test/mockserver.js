@@ -28,12 +28,13 @@ function selfData () {
     'electrical.batteries.house.capacity.consumedCharge': { value: 44 * 3600 },
     'electrical.batteries.house.capacity.timeRemaining': { value: 151200 },
     'notifications.navigation.warnings': {
-      german_580_26: { value: { state: 'warn', message: 'GERMAN NAV WARN 580/26: WESTERN BALTIC.FEHMARN. PROHIBITED AREA. (14 nm)', category: 'exercise' } },
-      baltic_sea_30_26: { value: { state: 'alert', message: 'BALTIC SEA NAV WARN 030/26: GNSS, AIS, RADAR AND DGPS INTERFERENCE (your sea area)', category: 'gnss' } },
+      german_580_26: { value: { state: 'warn', message: 'GERMAN NAV WARN 580/26: WESTERN BALTIC.FEHMARN. PROHIBITED AREA. (14 nm)', category: 'exercise', label: 'GERMAN NAV WARN 580/26', title: 'WESTERN BALTIC.FEHMARN. PROHIBITED AREA.', relevance: 'nearby', distanceNm: 14.1, areaOnly: false } },
+      baltic_sea_30_26: { value: { state: 'alert', message: 'BALTIC SEA NAV WARN 030/26: GNSS, AIS, RADAR AND DGPS INTERFERENCE (your sea area)', category: 'gnss', label: 'BALTIC SEA NAV WARN 030/26', title: 'SOUTHERN, SOUTHEASTERN, CENTRAL AND NORTHERN BALTIC, GULF OF FINLAND, GULF OF RIGA AND SEA OF AALAND.', relevance: 'here', distanceNm: 0, areaOnly: true } },
+      polish_276_26: { value: { state: 'warn', message: 'POLISH NAV WARN 276/26: SOUTHERN BALTIC. POLISH COAST (120 nm)', category: 'exercise', label: 'POLISH NAV WARN 276/26', title: 'SOUTHERN BALTIC. POLISH COAST', relevance: 'route', distanceNm: 120, routeDistanceNm: 3 } },
       old_one: { value: { state: 'normal', message: '' } }
     },
     'notifications.environment.warnings': {
-      onboard_pressure: { value: { state: 'warn', message: 'On board barometer: Pressure falling fast', category: 'weather' } }
+      onboard_pressure: { value: { state: 'warn', message: 'On board barometer: Pressure falling fast', category: 'weather', label: 'On board barometer', title: 'Pressure falling fast', relevance: 'here', distanceNm: 0 } }
     }
   }
 }
@@ -46,7 +47,22 @@ function mockApp () {
     self,
     getDataDirPath: () => dir,
     getSelfPath: p => self[p],
-    handleMessage: () => {},
+    // Stores deltas like the server does, so notifications from another plugin
+    // (signalk-baltic-warnings in the demo) appear under the self data.
+    handleMessage: (id, msg) => {
+      for (const u of msg.updates || []) {
+        for (const v of u.values || []) {
+          const m = /^(notifications\.[a-z]+\.warnings)\.(.+)$/.exec(v.path)
+          if (m) {
+            const node = self[m[1]] || (self[m[1]] = {})
+            node[m[2]] = { value: v.value }
+          } else {
+            self[v.path] = { value: v.value }
+          }
+        }
+      }
+    },
+    registerResourceProvider: () => {},
     setPluginStatus: () => {},
     debug: () => {}
   }

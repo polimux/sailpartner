@@ -1,26 +1,47 @@
 # Sailpartner
 
-The morning brief screen for a sailing boat running Signal K: one look at the chart table tells you whether to go, when to reef and what the day brings.
+The morning brief screen for a sailing boat running Signal K. One look at the chart table tells you whether to go out today; a second tab plans the passage.
 
-![Morning brief with a planned trip](docs/brief-trip.png)
+## Pages
 
-## What's on the brief
+### Brief — here, today
 
-| Area | Content | Data |
-|---|---|---|
-| Header | Date, place, sunrise/sunset, clock, **verdict** (Good sailing / Reef before 12h / Stay in) | Open-Meteo, your thresholds, warnings, barometer |
-| Warnings | The two most important warnings near you or on your route, source health | `signalk-baltic-warnings` notifications and `/status` |
-| Today in brief | Three or four plain sentences: wind now and later in Beaufort, rain, pressure, the takeaway | Open-Meteo + on-board barometer |
-| Rain | Next 12 hours, mm per hour | Open-Meteo |
-| Where to today? | Pick a saved harbour, departure and speed (default 5 kn). For every hour: where you are, wind and gusts, point of sail for that leg, waves, rain, a green/amber/red bar. Distance, ETA, margin to sunset, tactical advice (reef before, preventer, oilskins, following sea) | Open-Meteo forecast **at the position and hour you'll be there**, Open-Meteo marine |
-| Wind now | Bow-up wind dial (A = apparent, T = true), true speed and direction, 10-minute gust, arrows for the last 3 hours with "turned right 17° · 3 kn stronger" | Signal K wind paths |
-| House bank | State of charge, voltage, current, Ah used, time to go | `electrical.batteries.*` (SmartShunt via `signalk-victron-ble`) |
-| Barometer | Sparkline, 3-hour tendency with the classic thresholds | on-board sensor (BME280) |
-| Boat | Moored / at anchor (with drift) / under way, overnight max wind, cabin temperature and humidity, yesterday's distance | Signal K, anchor alarm plugin |
+![Brief](docs/brief.png)
 
-Without a trip the planning panel shows the wind for the day at your berth instead:
+| Part | Content |
+|---|---|
+| Verdict | One answer for here and today: *Good sailing*, *Sail this morning*, *Sail until 15h*, *Reef before 12h*, *Stay in*. After 18h it looks at tomorrow |
+| Two sentences | What the wind does (Beaufort, front, rain) and what to do about it |
+| Day ribbon | 7h–19h at your position. One bar per hour: the solid part is the mean wind, the lighter top reaches up to the gusts. Green / amber (reef) / red. Dashed line: reef from gusts. Wind arrows, rain drops, *now*, the front and the dark hours after sunset |
+| Needs your attention | At most three cards, only when something needs you: barometer falling or rising fast, warnings near you (from `signalk-baltic-warnings`), battery low, anchor drifting. Otherwise "Nothing needs your attention" |
+| Status line | What's fine, at a glance: battery, wind now, cabin, warning sources |
 
-![Morning brief without a trip](docs/brief-notrip.png)
+### Passage — a trip
+
+![Passage](docs/passage.png)
+
+| Part | Content |
+|---|---|
+| Chart | OpenStreetMap with OpenSeaMap seamarks. **Tap to add waypoints**, the last one is your target; drag to pan, +/− to zoom, *Undo*, *Clear*, or *Harbours* to pick a saved one. Warnings are drawn on the chart: coloured when on your route, grey when only nearby |
+| Trip | Distance, legs, duration; departure and speed with −/+; arrival |
+| Trip verdict | e.g. *Reef before 12h · front at 13h, 20 nm out* |
+| Better departure | Sailpartner tries every departure in 30-minute steps today and tomorrow (daylight) and suggests one with less strong wind, less rain and a daylight arrival. *Use* applies it |
+| Along the route | The same gust bars, but for where you'll be each hour at your planning speed, with the point of sail for that leg and rain |
+| Warnings on this route | From `signalk-baltic-warnings`, within the route corridor; nearby ones greyed out |
+
+Without a trip the right side lists your saved harbours:
+
+![Passage without a trip](docs/passage-pick.png)
+
+The chart tiles need internet (so does the forecast). They are cached by the browser.
+
+### Instruments
+
+![Instruments](docs/instruments.png)
+
+Bow-up wind dial (A = apparent, T = true), true wind, 10-minute gust, the last 3 hours as arrows; SmartShunt battery; barometer over 24 hours with the 3-hour tendency.
+
+*Weather, Warnings, Battery and Logbook pages follow.*
 
 ## The verdict
 
@@ -29,28 +50,35 @@ Defaults for a ~32 ft cruiser like the Hanse 323, all adjustable in the plugin c
 | | Mean wind | Gusts |
 |---|---|---|
 | Reef (amber) | ≥ 18 kn | ≥ 24 kn |
-| Red on the route bars | ≥ 25 kn | ≥ 28 kn |
+| Red | ≥ 25 kn | ≥ 28 kn |
 | Stay in | ≥ 25 kn | ≥ 32 kn |
 
-The verdict looks at the planned trip, or at the rest of the daylight when there is no trip. An *alarm*-level warning or a barometer falling very fast also gives "Stay in".
+An *alarm*-level warning or a barometer falling very fast (> 6 hPa in 3 h) also gives "Stay in".
 
-## Install on the Pi
+A **front** is detected when the forecast wind turns by 35° or more within two hours, together with more wind or rain.
 
-Requires the Signal K server (OpenPlotter). No native dependencies, nothing to build.
+## Install
+
+See the [installation guide in the repository README](../../README.md#installation-on-the-raspberry-pi). In short:
 
 ```bash
-cd ~/.signalk
-npm install /path/to/sailpartner-0.1.0.tgz
-sudo systemctl restart signalk
+git clone https://github.com/polimux/sailpartner.git
+bash sailpartner/scripts/install-on-pi.sh
 ```
 
-Enable **Sailpartner** under *Server → Plugin Config*. The screen is at `http://<pi>:3000/sailpartner/`. For the 10.1" display, start Chromium in kiosk mode on that address.
+Enable **Sailpartner** in *Server → Plugin Config*, open `http://<pi>:3000/sailpartner/`.
 
-Check the paths in the plugin config: barometer (default `environment.outside.pressure`), cabin temperature/humidity (default `environment.inside.*`) and the battery id if you have more than one.
+## Configuration
 
-### Destinations
-
-A starter list of western Baltic harbours around Heiligenhafen is built in. Positions and via points are **approximate and only used to sample the weather along the way** — not for navigation. Edit them in the plugin config.
+| Setting | Default |
+|---|---|
+| Time zone | Europe/Berlin |
+| Planning speed | 5 kn |
+| Reef / red / stay-in thresholds | see above |
+| Battery id | first found under `electrical.batteries` |
+| Barometer path | `environment.outside.pressure` |
+| Cabin temperature / humidity | `environment.inside.temperature`, `environment.inside.relativeHumidity` |
+| Home port, saved harbours | Heiligenhafen and western Baltic harbours — **approximate positions, only used to sample the weather along the way, not for navigation** |
 
 ## API
 
@@ -58,20 +86,19 @@ A starter list of western Baltic harbours around Heiligenhafen is built in. Posi
 
 | Method | Path | |
 |---|---|---|
-| GET | `/brief` | everything on the screen as JSON |
+| GET | `/brief` | the Brief and Instruments data |
+| GET | `/passage` | the planned trip with route weather, verdict, better departure |
+| PUT | `/trip` | `{ "destination": "Kühlungsborn" }` or `{ "waypoints": [{latitude, longitude}, …] }` (from the boat) or `{ "points": [...] }` (full route), plus optional `departure` (`"09:00"` or ISO) and `speedKn`. Fields left out keep their value |
+| DELETE | `/trip` | no trip |
 | GET | `/destinations` | saved harbours |
-| PUT | `/trip` | `{ "destination": "Kühlungsborn", "departure": "09:00", "speedKn": 5 }` or `{ "name": "...", "points": [{latitude, longitude}, …] }` |
-| DELETE | `/trip` | no trip today |
 
-After a trip is planned the page also sends the route to `signalk-baltic-warnings`, so warnings near the route are flagged "on route".
+The page sends the planned route to `signalk-baltic-warnings` (`PUT /plugins/signalk-baltic-warnings/route`), so warnings near it are flagged "on route".
 
-## Try it on a laptop
+## Development
 
 ```bash
-npm run demo     # http://localhost:3333 — a simulated morning in Heiligenhafen with a front coming in
 npm test
+npm run demo   # http://localhost:3333 — simulated morning, no boat needed
 ```
 
-## Coming next
-
-Weather, Warnings, Battery, Logbook and Chart pages (the tabs are there, tapping them says so).
+The demo also runs `signalk-baltic-warnings` from the repository with a saved copy of the BALTICO warnings page.

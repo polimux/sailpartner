@@ -32,6 +32,13 @@ function notificationValue (w) {
     message: `${w.label}: ${w.title}${describeDistance(w)}`,
     id: w.id,
     category: w.category,
+    label: w.label,
+    title: w.title,
+    detail: (w.text || '').split('\n').slice(1).join(' ').replace(/\s+/g, ' ').trim().slice(0, 160),
+    relevance: w.relevance || null,
+    distanceNm: w.distanceNm ?? null,
+    routeDistanceNm: w.routeDistanceNm ?? null,
+    areaOnly: !!w.areaOnly,
     validTo: w.validTo || null
   }
 }

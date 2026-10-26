@@ -31,7 +31,7 @@ function verdict ({ hours, warnings = [], barometer = null, thresholds = DEFAULT
   if (first) {
     const reefBy = new Date(Date.parse(first.time) - 3600e3).toISOString()
     const text = Date.parse(reefBy) <= now ? 'Reef now' : `Reef before ${fmt(reefBy)}`
-    return { level: 'caution', text, reefBy, reasons: [`${Math.round(first.windKn)} kn, gusts ${Math.round(first.gustKn || first.windKn)} from ${fmt(first.time)}`] }
+    return { level: 'caution', text, reefBy, firstBad: first.time, reasons: [`${Math.round(first.windKn)} kn, gusts ${Math.round(first.gustKn || first.windKn)} from ${fmt(first.time)}`] }
   }
   if (barometer && barometer.severity === 'warn') {
     return { level: 'caution', text: 'Watch the barometer', reasons: [`pressure ${barometer.label}`] }

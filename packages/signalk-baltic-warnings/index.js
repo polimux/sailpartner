@@ -166,7 +166,7 @@ module.exports = function (app, deps = {}) {
     const values = []
     for (const [p, v] of want) {
       const prev = published.get(p)
-      if (!prev || prev.state !== v.state || prev.message !== v.message) values.push({ path: p, value: v })
+      if (!prev || prev.state !== v.state || prev.message !== v.message || prev.relevance !== v.relevance) values.push({ path: p, value: v })
     }
     for (const p of published.keys()) if (!want.has(p)) values.push({ path: p, value: sk.clearValue() })
     published = want

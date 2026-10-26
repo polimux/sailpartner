@@ -105,6 +105,12 @@ test('signal k conversions', () => {
   assert.equal(v.state, 'warn')
   assert.match(v.message, /^GERMAN NAV WARN 580\/26: WESTERN BALTIC\.FEHMARN\. PROHIBITED AREA\. \(\d+(\.\d)? nm\)$/)
 
+  assert.equal(v.relevance, f.relevance)
+  assert.equal(v.label, 'GERMAN NAV WARN 580/26')
+  assert.equal(v.title, 'WESTERN BALTIC.FEHMARN. PROHIBITED AREA.')
+  assert.match(v.detail, /^'SPERR-G\.1' LIGHTBUOY/)
+  assert.equal(typeof v.distanceNm, 'number')
+
   const note = sk.toNote(f)
   assert.equal(note.position.latitude, 54.525)
   const region = sk.toRegion(ws.find(w => w.id === 'kaliningrad-224-26'))

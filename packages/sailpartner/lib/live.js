@@ -111,7 +111,21 @@ function warnings (app) {
     for (const [key, v] of Object.entries(node)) {
       const val = v && v.value ? v.value : v
       if (!val || !val.state || val.state === 'normal') continue
-      out.push({ path: `notifications.${branch}.warnings.${key}`, state: val.state, message: val.message, category: val.category || null, validTo: val.validTo || null })
+      out.push({
+        path: `notifications.${branch}.warnings.${key}`,
+        id: val.id || key,
+        state: val.state,
+        message: val.message,
+        category: val.category || null,
+        label: val.label || null,
+        title: val.title || null,
+        detail: val.detail || null,
+        relevance: val.relevance || null,
+        distanceNm: typeof val.distanceNm === 'number' ? val.distanceNm : null,
+        routeDistanceNm: typeof val.routeDistanceNm === 'number' ? val.routeDistanceNm : null,
+        areaOnly: !!val.areaOnly,
+        validTo: val.validTo || null
+      })
     }
   }
   const rank = { emergency: 5, alarm: 4, warn: 3, alert: 2 }

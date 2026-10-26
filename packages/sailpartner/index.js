@@ -3,9 +3,10 @@
 const fs = require('fs')
 const path = require('path')
 const http = require('./lib/http')
-const { fetchForecasts, at } = require('./lib/openmeteo')
-const { routeWeather, tripAdvice, sailingHour, DEFAULT_THRESHOLDS } = require('./lib/routeweather')
-const { verdict, summary } = require('./lib/brief')
+const { fetchForecasts } = require('./lib/openmeteo')
+const { routeWeather, sailingHour, DEFAULT_THRESHOLDS } = require('./lib/routeweather')
+const L = require('./lib/local')
+const P = require('./lib/passage')
 const { History } = require('./lib/history')
 const live = require('./lib/live')
 const { distanceNm } = require('./lib/route')
@@ -20,7 +21,7 @@ module.exports = function (app, deps = {}) {
   const plugin = {
     id: PLUGIN_ID,
     name: 'Sailpartner',
-    description: 'Morning brief and logbook screen: verdict, written weather summary, route weather, live wind, rain, battery and barometer'
+    description: 'Morning brief for here, passage weather along a planned route, live wind, battery and barometer'
   }
 
   let options = null
@@ -134,11 +135,15 @@ module.exports = function (app, deps = {}) {
     return pts.slice(0, 20)
   }
 
+  function forecastKey (pts) {
+    return JSON.stringify(pts.map(p => [p.latitude.toFixed(2), p.longitude.toFixed(2)]))
+  }
+
   async function refreshForecast (force = false) {
     const s = snapshot()
     const trip = activeTrip()
     const pts = samplePoints(s, trip)
-    const key = JSON.stringify(pts.map(p => [p.latitude.toFixed(2), p.longitude.toFixed(2)]))
+    const key = forecastKey(pts)
     const fresh = clock() - forecast.at < options.forecastIntervalMin * 60e3
     if (!force && fresh && key === forecast.key) return forecast
     if (forecastPromise) return forecastPromise
@@ -174,8 +179,8 @@ module.exports = function (app, deps = {}) {
     return i >= 0 ? { sunrise: f.sunrise[i], sunset: f.sunset[i] } : null
   }
 
-  // ----- brief ------------------------------------------------------------
-  function placeName (pos, state) {
+  // ----- brief: here -------------------------------------------------------
+  function placeName (pos, boatState) {
     if (!pos) return options.home.name
     let best = null
     for (const d of options.destinations) {
@@ -183,14 +188,11 @@ module.exports = function (app, deps = {}) {
       if (!best || dd < best.d) best = { d: dd, name: d.name }
     }
     if (best && best.d <= 1.5) return best.name
-    return state === 'underway' ? 'At sea' : 'At anchor'
+    return boatState === 'underway' ? 'At sea' : 'At anchor'
   }
 
-  function localHours (from, count) {
-    const f = forecast.list[0]
-    if (!f) return []
-    const start = Math.floor(from / 3600e3) * 3600e3
-    return f.hours.filter(h => Date.parse(h.time) >= start).slice(0, count)
+  function localForecast () {
+    return forecast.list[0] || null
   }
 
   function buildBrief () {
@@ -198,73 +200,81 @@ module.exports = function (app, deps = {}) {
     const nowIso = new Date(now).toISOString()
     const s = snapshot()
     const boatState = live.boatState(s)
-    const sun = sunFor(nowIso)
     const warnings = live.warnings(app)
     const baro = history.barometer(now)
-
-    // trip / route weather
-    const trip = activeTrip(now)
-    let tripOut = null
-    if (trip && forecast.list.length) {
-      const rw = routeWeather(trip, forecastFor, { thresholds: thresholds(), sunsetFor: iso => (sunFor(iso) || {}).sunset })
-      tripOut = { ...rw, route: trip.points, advice: tripAdvice(rw, fmt) }
+    const day = L.briefDay(now, tz(), sunFor)
+    const fc = localForecast()
+    const hours = L.periodHours(fc, now, day, tz()).map(h => ({ ...h, ...sailingHour(h, null, thresholds()) }))
+    const hereWarnings = warnings.filter(w => w.relevance !== 'route' && w.relevance !== 'far')
+    const v = L.localVerdict({ hours, warnings: hereWarnings, barometer: baro, thresholds: thresholds(), fmt, now, day, tz: tz() })
+    const front = L.detectFront(hours)
+    const wind = {
+      aws: s.aws,
+      awa: s.awa,
+      tws: s.tws,
+      twa: s.twa,
+      twd: s.twd,
+      sog: s.sog,
+      gust10: history.gust(10, now),
+      ...history.windHistory(now)
     }
-
-    // period that drives verdict and text: the trip, or the rest of the daylight here
-    let period
-    if (tripOut) period = tripOut.hours.filter(h => !h.arrival)
-    else {
-      const until = sun && Date.parse(sun.sunset) > now ? Date.parse(sun.sunset) : now + 8 * 3600e3
-      const n = Math.max(6, Math.ceil((until - now) / 3600e3))
-      period = localHours(now, n).map(h => ({ ...h, ...sailingHour(h, null, thresholds()) }))
-    }
-    const v = period.length ? verdict({ hours: period, warnings, barometer: baro, thresholds: thresholds(), fmt, now }) : null
-    const lines = period.length ? summary({ hours: period, barometer: baro, verdict: v, fmt }) : []
-
-    const rainHours = localHours(now, 12).map(h => ({ time: h.time, mm: h.rainMm }))
-    const rainNow = rainHours.length && (rainHours[0].mm || 0) >= 0.1
-    const nextRain = rainHours.find(h => (h.mm || 0) >= 0.2)
-    const windToday = localHours(now, 16).map(h => ({ time: h.time, ...sailingHour(h, null, thresholds()) }))
-
-    const today = T.dayKey(now, tz())
-    const yesterday = T.addDays(today, -1)
+    const pressure24 = history.pressureSeries(24, now)
+    const pressure3h = pressure24.filter(p => Date.parse(p.t) >= now - 3 * 3600e3)
 
     return {
       now: nowIso,
       timezone: tz(),
-      place: { name: placeName(s.position, boatState), state: boatState, position: s.position },
-      sun,
+      place: { name: placeName(s.position, boatState), state: boatState, position: s.position, heading: s.heading },
+      sun: sunFor(nowIso),
+      day: { key: day.key, isToday: day.isToday },
       verdict: v,
-      summary: lines,
-      rain: {
-        hours: rainHours,
-        status: rainNow ? 'rain now' : nextRain ? `rain from ${fmt(nextRain.time)}` : 'dry next 12 h'
-      },
-      trip: tripOut,
-      windToday,
-      wind: {
-        aws: s.aws,
-        awa: s.awa,
-        tws: s.tws,
-        twa: s.twa,
-        twd: s.twd,
-        sog: s.sog,
-        gust10: history.gust(10, now),
-        ...history.windHistory(now)
-      },
+      headline: L.headline({ hours, verdict: v, front, fmt, day, now }),
+      ribbon: L.ribbon({ forecast: fc, now, day, tz: tz(), thresholds: thresholds() }),
+      attention: L.attention({ barometer: baro, pressure3h, warnings, battery: s.battery, anchor: boatState === 'anchored' ? s.anchor : null }),
+      status: L.status({ battery: s.battery, wind, cabin: { temp: s.cabinTemp, humidity: s.cabinHumidity } }),
+      wind,
       battery: s.battery,
-      barometer: { ...(baro || {}), current: baro ? baro.current : s.pressureHPa, series: history.pressureSeries(24, now) },
+      barometer: { ...(baro || {}), current: baro ? baro.current : s.pressureHPa, series: pressure24 },
       boat: {
         cabinTemp: s.cabinTemp,
         cabinHumidity: s.cabinHumidity,
         overnightMax: history.maxWind(12, now),
         anchor: s.anchor
       },
-      log: { today: history.day(today), yesterday: history.day(yesterday) },
+      log: { today: history.day(T.dayKey(now, tz())), yesterday: history.day(T.addDays(T.dayKey(now, tz()), -1)) },
       warnings,
       forecast: { updated: forecast.at ? new Date(forecast.at).toISOString() : null, error: forecast.error, source: 'Open-Meteo' },
       thresholds: thresholds()
     }
+  }
+
+  // ----- passage ------------------------------------------------------------
+  function buildPassage () {
+    const now = clock()
+    const s = snapshot()
+    const trip = activeTrip(now)
+    let out = null
+    if (trip && forecast.list.length) {
+      out = P.passage({ trip, forecastFor, sunFor, thresholds: thresholds(), fmt, now, tz: tz(), warnings: live.warnings(app) })
+    }
+    return {
+      now: new Date(now).toISOString(),
+      timezone: tz(),
+      boat: { position: boatPosition(s), heading: s.heading, state: live.boatState(s) },
+      home: options.home,
+      destinations: options.destinations.map(d => ({ name: d.name, latitude: d.latitude, longitude: d.longitude })),
+      speedKn: options.speedKn,
+      trip: out,
+      waypoints: trip ? trip.waypoints || trip.points.slice(1) : [],
+      forecast: { updated: forecast.at ? new Date(forecast.at).toISOString() : null, error: forecast.error },
+      thresholds: thresholds()
+    }
+  }
+
+  function nameFor (point) {
+    for (const d of options.destinations) if (distanceNm(point, d) <= 1.5) return d.name
+    const f = (v, pos, neg) => `${Math.floor(Math.abs(v))}°${String(Math.round((Math.abs(v) % 1) * 60)).padStart(2, '0')}′${v >= 0 ? pos : neg}`
+    return `${f(point.latitude, 'N', 'S')} ${f(point.longitude, 'E', 'W')}`
   }
 
   // ----- lifecycle --------------------------------------------------------
@@ -312,21 +322,43 @@ module.exports = function (app, deps = {}) {
       res.json({ home: options.home, destinations: options.destinations.map(d => ({ name: d.name, latitude: d.latitude, longitude: d.longitude })), speedKn: options.speedKn })
     })
 
-    // PUT /trip { destination: "Kühlungsborn", departure: "09:00" | ISO, speedKn: 5 }
-    //       or { name, points: [{latitude, longitude}, ...], departure, speedKn }
+    router.get('/passage', async (req, res) => {
+      if (!options) return res.status(503).json({ error: 'not started' })
+      if (activeTrip() && (!forecast.list.length || forecast.key !== forecastKey(samplePoints(snapshot(), activeTrip())))) await refreshForecast()
+      res.json(buildPassage())
+    })
+
+    // PUT /trip — one of:
+    //   { destination: "Kühlungsborn" }               saved harbour, with its via points
+    //   { waypoints: [{latitude, longitude}, ...] }   tapped on the chart, from the boat
+    //   { points: [...], name }                       a full route, e.g. from Freeboard-SK
+    // plus optional departure ("09:00" local or ISO) and speedKn.
     router.put('/trip', async (req, res) => {
       try {
         const b = await readBody(req)
         const s = snapshot()
-        let points; let name
-        if (Array.isArray(b.points) && b.points.length >= 2) {
-          points = b.points.filter(p => typeof p.latitude === 'number' && typeof p.longitude === 'number')
-          name = b.name || 'Route'
-        } else {
+        const prev = activeTrip()
+        const valid = arr => (arr || []).filter(p => p && typeof p.latitude === 'number' && typeof p.longitude === 'number')
+        let points; let name; let waypoints
+        if (b.destination) {
           const dest = options.destinations.find(d => d.name === b.destination)
           if (!dest) return res.status(400).json({ error: `unknown destination "${b.destination}"` })
           points = tripPoints(dest, boatPosition(s))
+          waypoints = points.slice(1)
           name = dest.name
+        } else if (Array.isArray(b.waypoints)) {
+          waypoints = valid(b.waypoints)
+          if (!waypoints.length) return res.status(400).json({ error: 'waypoints need latitude and longitude' })
+          points = [boatPosition(s), ...waypoints]
+          name = nameFor(waypoints[waypoints.length - 1])
+        } else if (Array.isArray(b.points)) {
+          points = valid(b.points)
+          waypoints = points.slice(1)
+          name = b.name || nameFor(points[points.length - 1])
+        } else if (prev) {
+          points = prev.points; waypoints = prev.waypoints || prev.points.slice(1); name = prev.destination
+        } else {
+          return res.status(400).json({ error: 'give a destination, waypoints or points' })
         }
         if (points.length < 2) return res.status(400).json({ error: 'route needs at least 2 points' })
         let departure
@@ -335,14 +367,17 @@ module.exports = function (app, deps = {}) {
           departure = T.localToDate(T.dayKey(clock(), tz()), hh, mm, tz()).toISOString()
         } else if (b.departure && !isNaN(Date.parse(b.departure))) {
           departure = new Date(b.departure).toISOString()
+        } else if (prev && Date.parse(prev.departure) >= clock() - 3600e3) {
+          departure = prev.departure
         } else {
           departure = new Date(Math.ceil(clock() / 1800e3) * 1800e3).toISOString()
         }
-        const speedKn = typeof b.speedKn === 'number' && b.speedKn > 0.5 ? b.speedKn : options.speedKn
-        state.trip = { destination: name, departure, speedKn, points }
+        let speedKn = typeof b.speedKn === 'number' && b.speedKn > 0.5 ? b.speedKn : (prev ? prev.speedKn : options.speedKn)
+        speedKn = Math.min(12, Math.max(1, speedKn))
+        state.trip = { destination: name, departure, speedKn, points, waypoints }
         saveJson('state.json', state)
-        await refreshForecast(true)
-        res.json(buildBrief())
+        await refreshForecast()
+        res.json(buildPassage())
       } catch (e) {
         res.status(400).json({ error: e.message })
       }
@@ -352,10 +387,10 @@ module.exports = function (app, deps = {}) {
       if (!options) return res.status(503).json({ error: 'not started' })
       state.trip = null
       saveJson('state.json', state)
-      res.json({ ok: true })
+      res.json(buildPassage())
     })
   }
 
-  plugin._internals = { buildBrief, refreshForecast, tick, get history () { return history }, get state () { return state } }
+  plugin._internals = { buildBrief, buildPassage, refreshForecast, tick, get history () { return history }, get state () { return state } }
   return plugin
 }

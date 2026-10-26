@@ -7,28 +7,14 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
-<svg id="screen" viewBox="0 0 1280 800" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sailpartner morning brief"></svg>
+<svg id="screen" viewBox="0 0 1280 800" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Sailpartner"></svg>
 
 <div id="picker" class="overlay" hidden>
   <div class="sheet">
-    <h2>Where do you want to go today?</h2>
+    <h2>Pick a harbour</h2>
     <div id="dest-list" class="dest-list"></div>
-    <div class="row">
-      <label>Departure</label>
-      <button class="step" data-dep="-30" aria-label="Earlier">−</button>
-      <span id="dep-out" class="value">09:00</span>
-      <button class="step" data-dep="30" aria-label="Later">+</button>
-    </div>
-    <div class="row">
-      <label>Speed</label>
-      <button class="step" data-spd="-0.5" aria-label="Slower">−</button>
-      <span id="spd-out" class="value">5.0 kn</span>
-      <button class="step" data-spd="0.5" aria-label="Faster">+</button>
-    </div>
     <div class="actions">
-      <button id="clear-trip" class="secondary">No trip today</button>
       <button id="cancel" class="secondary">Cancel</button>
-      <button id="save-trip" class="primary">Show route weather</button>
     </div>
     <p id="picker-error" class="error" hidden></p>
   </div>

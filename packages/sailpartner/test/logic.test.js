@@ -143,3 +143,72 @@ test('history: gusts, wind trend, barometer, distance', () => {
   assert.ok(Math.abs(day.distanceNm - 5) < 0.1, `distance ${day.distanceNm}`)
   assert.ok(Math.abs(day.underwayH - 1) < 0.05)
 })
+
+test('front detection, local verdict and headline', () => {
+  const L = require('../lib/local')
+  const now = Date.parse('2026-10-26T07:56:00Z')
+  const day = { key: '2026-10-26', isToday: true }
+  const hours = fc.hours.filter(h => Date.parse(h.time) >= Date.parse('2026-10-26T07:00:00Z') && Date.parse(h.time) <= Date.parse('2026-10-26T15:41:00Z'))
+  const front = L.detectFront(hours)
+  assert.equal(front.time, '2026-10-26T12:00:00.000Z')
+  assert.equal(front.turnDeg, 45)
+  const v = L.localVerdict({ hours, warnings: [], barometer: null, fmt, now, day, tz: TZ })
+  assert.equal(v.text, 'Sail this morning')
+  const h = L.headline({ hours, verdict: v, front, fmt, day, now })
+  assert.equal(h[0], 'SW 4 now. A front brings W 5, gusts 7 and rain from about 13h.')
+  assert.equal(h[1], 'Back in harbour by 13h, or reef early and pack oilskins.')
+
+  // a quiet day: no front, steady wind
+  const calm = hours.map(x => ({ ...x, windKn: 10, gustKn: 13, windDir: 250, rainMm: 0 }))
+  assert.equal(L.detectFront(calm), null)
+  const vc = L.localVerdict({ hours: calm, warnings: [], fmt, now, day, tz: TZ })
+  assert.equal(vc.text, 'Good sailing')
+  assert.deepEqual(L.headline({ hours: calm, verdict: vc, front: null, fmt, day, now }), ['W 3 now, steady all day. Dry.', 'Fine sailing day.'])
+
+  // evening: the brief looks at tomorrow
+  const tomorrow = { key: '2026-10-27', isToday: false }
+  const vt = L.localVerdict({ hours: calm, warnings: [], fmt, now, day: tomorrow, tz: TZ })
+  assert.equal(vt.text, 'Tomorrow: good sailing')
+})
+
+test('attention cards and status line', () => {
+  const L = require('../lib/local')
+  const a = L.attention({
+    barometer: { label: 'falling fast', severity: 'warn', change3h: -3.1, current: 1008.8 },
+    pressure3h: [],
+    battery: { soc: 45, voltage: 12.1, current: -4 },
+    warnings: [
+      { path: 'x.a', state: 'alert', category: 'gnss', title: 'GNSS INTERFERENCE', label: 'BALTIC SEA NAV WARN 30/26', relevance: 'here', distanceNm: 0, areaOnly: true },
+      { path: 'x.b', state: 'warn', category: 'exercise', title: 'SOUTHERN BALTIC. POLISH COAST', label: 'POLISH NAV WARN 276/26', relevance: 'route', distanceNm: 120 },
+      { path: 'x.c', state: 'warn', category: 'waterlevel', title: 'LOW SEA LEVEL', detail: 'WESTERN BALTIC: AROUND -60 TO -70 CM BELOW CHART DATUM.', label: 'BALTIC SEA NAV WARN 32/26', relevance: 'nearby', distanceNm: 13.6 }
+    ]
+  })
+  assert.deepEqual(a.cards.map(c => c.kind), ['barometer', 'battery', 'warning'])
+  assert.equal(a.cards[1].title, 'Battery low')
+  assert.equal(a.cards[2].title, 'Water level warning')
+  assert.equal(a.cards[2].detail, 'Low Sea Level: Western Baltic: Around -60 to -70 cm Below Chart Datum.')
+  assert.equal(a.cards[2].note, 'BALTIC SEA NAV WARN 32/26 · 14 nm away')
+  assert.equal(a.more, 1, 'GNSS card left out, Polish warning is route-only')
+  assert.equal(L.smartCase('WESTERN BALTIC.FEHMARN. PROHIBITED AREA.'), 'Western Baltic. Fehmarn. Prohibited Area.')
+
+  const st = L.status({ battery: { soc: 78, timeRemainingS: 151200 }, wind: { tws: 14.1, twd: 230, gust10: 18 }, cabin: { temp: 14.2, humidity: 90 } })
+  assert.deepEqual(st.map(s => s.text), ['Battery 78 % · 1d 18h', 'Wind now SW 14 kn · gust 18', 'Cabin 14 °C · 90 %'])
+  assert.equal(st[2].level, 'amber', 'damp cabin')
+})
+
+test('better departure search', () => {
+  const { bestDeparture, scoreTrip } = require('../lib/passage')
+  const { routeWeather } = require('../lib/routeweather')
+  const sunFor = iso => { const i = fc.sunset.findIndex(s => s.slice(0, 10) === new Date(iso).toISOString().slice(0, 10)); return i >= 0 ? { sunrise: fc.sunrise[i], sunset: fc.sunset[i] } : null }
+  const trip = { points: [HH, ...KB.via, KB], departure: '2026-10-26T08:00:00Z', speedKn: 5 }
+  const rw = routeWeather(trip, () => fc, { sunsetFor: iso => sunFor(iso).sunset })
+  const s = scoreTrip(rw, sunFor(trip.departure).sunrise)
+  assert.equal(s.strongHours, 3)
+  assert.equal(s.rainyHours, 3)
+  const r = bestDeparture({ trip, forecastFor: () => fc, sunFor, now: Date.parse('2026-10-26T07:56:00Z'), tz: TZ })
+  assert.equal(r.better.departure, '2026-10-27T08:00:00.000Z')
+  assert.equal(r.better.reason, 'no reefing weather, dry')
+  // already the best: no suggestion
+  const r2 = bestDeparture({ trip: { ...trip, departure: '2026-10-27T08:00:00Z' }, forecastFor: () => fc, sunFor, now: Date.parse('2026-10-26T07:56:00Z'), tz: TZ })
+  assert.equal(r2.better, null)
+})
