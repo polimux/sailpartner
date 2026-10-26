@@ -1,0 +1,32 @@
+{
+  "name": "sailpartner",
+  "version": "0.1.0",
+  "description": "Morning brief screen for sailors on Signal K: go/reef/stay verdict, written weather summary, weather along your route at your planning speed, live wind, rain, battery and barometer.",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "demo": "node bin/demo.js"
+  },
+  "keywords": [
+    "signalk-node-server-plugin",
+    "signalk-webapp",
+    "signalk-category-weather",
+    "signalk-category-utility",
+    "sailing",
+    "morning-brief"
+  ],
+  "signalk": {
+    "displayName": "Sailpartner"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "Apache-2.0",
+  "files": [
+    "index.js",
+    "lib/",
+    "public/",
+    "bin/",
+    "README.md"
+  ]
+}
