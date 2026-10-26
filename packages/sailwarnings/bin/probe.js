@@ -57,7 +57,7 @@ async function main () {
       const result = await src.fetch({ http, now: new Date(), options: { language: 'en' } })
       const warnings = result.warnings
       raw = result.raw
-      const line = src.probeOnly ? `OK (probe only: ${src.note})` : `OK: ${warnings.length} warnings read${result.note ? ' — ' + result.note : ''}`
+      const line = src.probeOnly ? `OK (probe only: ${src.note})${result.note ? ' — ' + result.note : ''}` : `OK: ${warnings.length} warnings read${result.note ? ' — ' + result.note : ''}`
       process.stdout.write(line + '\n')
       report.push(line)
       all.push(...warnings.map(w => ({ ...w, sources: [src.id] })))

@@ -147,6 +147,7 @@ test('DWD coastal warnings: polygons, names, English preferred, lat/lon order de
   assert.equal(ws.length, 1)
   assert.equal(ws[0].label, 'DWD · Fehmarnbelt')
   assert.equal(ws[0].title, 'Gale warning')
+  assert.match(ws[0].text, /^Official GALE WARNING/)
   assert.equal(ws[0].severity, 'alarm')
   assert.equal(ws[0].validTo, '2026-10-27T06:00:00Z')
   assert.equal(ws[0].geometry.polygon[0].latitude, 54.2)
@@ -158,18 +159,56 @@ test('DWD coastal warnings: polygons, names, English preferred, lat/lon order de
   assert.equal(app[0].title, 'Near gale warning')
 })
 
-test('Traficom: the warnings layer is found in the WFS capabilities', () => {
-  const fin = require('../lib/sources/finland')
-  const xml = `<wfs:WFS_Capabilities><FeatureTypeList>
-    <FeatureType><Name>avoin:Ahti_Limit_L</Name><Title>Ahti_Limit_L</Title></FeatureType>
-    <FeatureType><Name>avoin:merivaroitukset_voimassa</Name><Title>Merivaroitukset</Title></FeatureType>
-  </FeatureTypeList></wfs:WFS_Capabilities>`
-  assert.equal(fin.findLayer(xml).hit.name, 'avoin:merivaroitukset_voimassa')
-  assert.equal(fin.findLayer('<x><FeatureType><Name>a:b</Name></FeatureType></x>').hit, undefined)
-})
 
 test('LTSA: ArcGIS service addresses are found in the app script', () => {
   const ltsa = require('../lib/sources/ltsa')
   const js = 'var a={url:"https://gis.eltsa.lt/arcgis/rest/services/NW/NavWarnings/FeatureServer/0",b:"https://js.arcgis.com/4.18/"};x("https://gis.eltsa.lt/arcgis/rest/services/NW/Base/MapServer")'
   assert.deepEqual(ltsa.serviceUrls(js), ['https://gis.eltsa.lt/arcgis/rest/services/NW/NavWarnings/FeatureServer/0', 'https://gis.eltsa.lt/arcgis/rest/services/NW/Base/MapServer'])
+})
+
+test('LTSA: basemaps are not mistaken for the warnings service', () => {
+  const ltsa = require('../lib/sources/ltsa')
+  assert.deepEqual(ltsa.serviceUrls('a="https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer"'), [])
+  assert.deepEqual(ltsa.configUrls('load("config/app.json");x="nls/strings.json"', 'https://hydro.eltsa.lt/nw/app.min.js'), ['https://hydro.eltsa.lt/nw/config/app.json'])
+})
+
+test('Traficom S-124 features (live sample, 26 Oct 2026)', () => {
+  const fin = require('../lib/sources/finland')
+  const f = {
+    type: 'Feature',
+    geometry: { type: 'MultiPolygon', coordinates: [[[[27.844333, 61.556548], [27.843937, 61.553065], [27.852878, 61.552722], [27.854184, 61.55645], [27.844333, 61.556548]]]] },
+    properties: { ID: 550, WARNINGINFORMATION_FI: 'RUOPPAUSTYÖT KUPARONVIRRAN LOSSIN RANNOILLA.', WARNINGINFORMATION_EN: 'DREDGING WORK AT THE KUPARONVIRTA FERRY SITE. BOATERS ARE ADVISED TO EXERCISE CAUTION.', MESSAGESERIESIDENTIFIERINTEROPERABILITYIDENTIFIER: 'urn:mrn:fin:navwarn:FI05:VV:2026:139', MESSAGESERIESIDENTIFIERNAMEOFSERIES_EN: 'Warnings for Yachtmen', MESSAGESERIESIDENTIFIERWARNINGNUMBER: 139, MESSAGESERIESIDENTIFIERYEAR: 2026, NAVWARNTYPEGENERAL_EN: 'Special operations', PUBLICATIONTIME: '2026-10-15T13:30:46Z', GENERALAREALOCATIONNAME_EN: 'Vuoksi watercourse', LOCALITYLOCATIONNAME_EN: 'KUPARONVIRTA FERRY' }
+  }
+  const [w] = fin.parse([f, { ...f, geometry: { type: 'Point', coordinates: [27.85, 61.555] } }])
+  assert.equal(w.label, 'FINNISH LOCAL WARNING 139/26')
+  assert.equal(w.title, 'Kuparonvirta Ferry · Special operations')
+  assert.equal(w.category, 'works')
+  assert.equal(w.issued, '2026-10-15T13:30:46Z')
+  assert.equal(w.geometry.polygon[0].latitude, 61.556548)
+  assert.equal(w.geometry.positions.length, 1, 'shapes of the same warning are merged')
+  const caps = '<FeatureType><Name>avoin:Ahti_Limit_L</Name></FeatureType><FeatureType><Name>avoin:navigational_warnings_a</Name></FeatureType><FeatureType><Name>avoin:navigational_warnings_p</Name></FeatureType>'
+  assert.deepEqual(fin.findLayers(caps).names, ['avoin:navigational_warnings_a', 'avoin:navigational_warnings_p'])
+})
+
+test('navtex.lv radio text: foreign and garbled messages are dropped', () => {
+  const { cleanRadio } = require('../lib/sources/generic')
+  const w = (issuer, title, text) => ({ issuer, title, text, areas: ['2026-10-26 22:00:57(LV) AREA: A'] })
+  const r = cleanRadio([
+    w('DANISH', 'DENMARK. LIIM F_OZWLM__D_LZYZPM__S_STARBOARD HAND LIGHT BUOY', 'x'),
+    w('KALININGRAD', 'SOUTHEASTERN BALTIC', 'SHIPS EXERCISES 312100 UTC OCT THRU 302100 UTC NOV'),
+    w('CANCEL LITHUANIAN', '.', '.'),
+    w('AVURNAV BREST', 'IROISE', 'TARGET LAUNCHING')
+  ])
+  assert.deepEqual(r.warnings.map(x => x.issuer), ['KALININGRAD'])
+  assert.deepEqual(r.warnings[0].areas, [])
+  assert.equal(r.note, '1 warnings with reception errors skipped')
+})
+
+test('DWD live sample (26 Oct 2026): German text gets an English title and translation', () => {
+  const dwd = require('../lib/sources/dwd')
+  const [w] = dwd.parseWfs({ features: [{ type: 'Feature', geometry: { type: 'MultiPolygon', coordinates: [[[[10.0, 54.4], [11.3, 54.4], [11.3, 54.9], [10.0, 54.9], [10.0, 54.4]]]] }, properties: { AREADESC: 'Flensburg bis Fehmarn', IDENTIFIER: '2.49.0.0.276.0.DWD.PVW.1', LANGUAGE: 'de-DE', EVENT: 'BÖEN', SEVERITY: 'Minor', SENT: '2026-10-26T14:33:00Z', ONSET: '2026-10-26T14:33:00Z', EXPIRES: null, HEADLINE: 'Amtliche Warnung des Seewetterdienstes Hamburg vor BÖEN', DESCRIPTION: 'Südwest 6, dabei Böen von 8 Beaufort, süddrehend.' } }] })
+  assert.equal(w.title, 'Gust warning')
+  assert.equal(w.severity, 'warn')
+  assert.equal(w.text.split('\n')[0], 'SW 6, gusts Bft 8, turning S.')
+  assert.equal(w.validTo, null)
 })

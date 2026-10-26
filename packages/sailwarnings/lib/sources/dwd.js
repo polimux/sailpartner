@@ -21,9 +21,37 @@ function severityOf (event, level) {
   return level >= 3 ? 'alarm' : 'warn'
 }
 
+// DWD coastal warnings come in German only; the event names and the fixed
+// phrases of the wind text are translated, everything else stays as issued.
+const EVENTS = [
+  [/orkanartig/i, 'Violent storm'], [/orkan/i, 'Hurricane-force wind'], [/schwerer sturm/i, 'Severe gale'],
+  [/sturm/i, 'Gale'], [/starkwind/i, 'Strong wind'], [/böen|boeen/i, 'Gust'], [/gewitter/i, 'Thunderstorms'],
+  [/nebel/i, 'Fog'], [/vereisung/i, 'Icing'], [/sturmflut/i, 'Storm surge'], [/wasserstand|niedrigwasser/i, 'Water level']
+]
 function title (event) {
   const e = String(event || '').trim()
-  return e ? e.charAt(0).toUpperCase() + e.slice(1) + ' warning' : 'Wind warning'
+  const hit = EVENTS.find(([re]) => re.test(e))
+  if (hit) return `${hit[1]} warning`
+  return e ? e.charAt(0).toUpperCase() + e.slice(1).toLowerCase() + ' warning' : 'Wind warning'
+}
+
+const DIRS = { Nord: 'N', Nordost: 'NE', Ost: 'E', Südost: 'SE', Süd: 'S', Südwest: 'SW', West: 'W', Nordwest: 'NW' }
+const dir = d => DIRS[d.charAt(0).toUpperCase() + d.slice(1).toLowerCase()] || d
+const PHRASES = [
+  [/dabei Böen von (\d+) Beaufort/gi, 'gusts Bft $1'],
+  [/Böen bis (\d+) Beaufort/gi, 'gusts up to Bft $1'],
+  [/rechtsdrehend/gi, 'veering'], [/rückdrehend/gi, 'backing'],
+  [/(nordost|nordwest|südost|südwest|nord|ost|süd|west)(?:-?\s*bis\s*(nordost|nordwest|südost|südwest|nord|ost|süd|west))?drehend/gi,
+    (m, a, b) => `turning ${dir(a)}${b ? ' to ' + dir(b) : ''}`],
+  [/zunehmend/gi, 'increasing'], [/abnehmend/gi, 'decreasing'], [/vorübergehend/gi, 'temporarily'],
+  [/zeitweise/gi, 'at times'], [/später/gi, 'later'], [/anfangs/gi, 'at first'], [/um (\d)/gi, 'around $1'],
+  [/ bis /g, ' to '], [/ und /g, ' and '], [/ oder /g, ' or '], [/Beaufort/g, 'Bft'],
+  [/\b(Nordost|Nordwest|Südost|Südwest|Nord|Ost|Süd|West)(liche Winde)?\b/g, (m, d) => DIRS[d]]
+]
+function translate (de) {
+  let t = String(de || '')
+  for (const [re, to] of PHRASES) t = t.replace(re, to)
+  return t
 }
 
 function pick (p, keys) {
@@ -47,7 +75,9 @@ function parseWfs (json) {
   }
   return [...byKey.values()].map(({ p, area, ident, geometry }) => {
     const event = pick(p, ['EVENT', 'event'])
-    const text = [pick(p, ['HEADLINE', 'headline']), pick(p, ['DESCRIPTION', 'description']), pick(p, ['INSTRUCTION', 'instruction'])].filter(Boolean).join('\n')
+    const de = pick(p, ['DESCRIPTION', 'description'])
+    const isDe = /^de/.test(String(pick(p, ['LANGUAGE', 'language']) || 'de'))
+    const text = [isDe && de ? translate(de) : de, isDe && de ? `(DWD: ${de})` : pick(p, ['HEADLINE', 'headline']), pick(p, ['INSTRUCTION', 'instruction'])].filter(Boolean).join('\n')
     return {
       id: `dwd-${String(ident).slice(-24)}-${area}`.replace(/[^A-Za-z0-9-]+/g, '_'),
       issuer: 'DWD',
@@ -105,6 +135,7 @@ module.exports = {
   attribution: 'Deutscher Wetterdienst (DWD)',
   parseWfs,
   parseApp,
+  translate,
   async fetch ({ http }) {
     try {
       const { json, body } = await http.fetchJson(WFS)

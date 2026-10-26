@@ -16,8 +16,17 @@ function scriptUrls (html, base) {
   return [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map(m => new URL(m[1], base).href)
 }
 
+// basemaps and the ArcGIS library itself are not where warnings live
+const NOT_DATA = /services\.arcgisonline\.com|server\.arcgisonline\.com|js\.arcgis\.com|basemaps|World_|Canvas|Ocean_Base/i
+
 function serviceUrls (js) {
-  return [...new Set((js.match(SERVICE) || []).map(u => u.replace(/\/$/, '')))]
+  return [...new Set((js.match(SERVICE) || []).map(u => u.replace(/\/$/, '')))].filter(u => !NOT_DATA.test(u))
+}
+
+// relative config files the app may load ("config.json", "data/layers.json")
+function configUrls (js, base) {
+  const rel = [...js.matchAll(/["']((?:\.\/|\/)?[\w./-]+\.json)["']/g)].map(m => m[1]).filter(u => !/package|manifest|nls|i18n/i.test(u))
+  return [...new Set(rel)].slice(0, 10).map(u => new URL(u, base).href)
 }
 
 async function discover (http, raw) {
@@ -28,6 +37,15 @@ async function discover (http, raw) {
     const js = await http.fetchText(src)
     raw.push({ url: src, body: js })
     found.push(...serviceUrls(js))
+    if (!found.length) {
+      for (const cfg of configUrls(js, src)) {
+        try {
+          const body = await http.fetchText(cfg)
+          raw.push({ url: cfg, body })
+          found.push(...serviceUrls(body))
+        } catch (e) { /* not there */ }
+      }
+    }
   }
   if (!found.length) throw Object.assign(new Error('no ArcGIS service address found in the LTSA page'), { raw })
   const out = []
@@ -52,17 +70,24 @@ module.exports = {
   urls: [PAGE],
   attribution: 'Lithuanian Transport Safety Administration',
   serviceUrls,
+  configUrls,
   async fetch ({ http, now }) {
     const raw = []
-    if (!layers) layers = await discover(http, raw)
-    const warnings = []
-    for (const l of layers) {
-      const url = `${l}/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson`
-      const { json, body } = await http.fetchJson(url)
-      raw.push({ url, body })
-      warnings.push(...featuresToWarnings(json.features || [], { issuer: 'LITHUANIAN', prefix: 'lithuanian-local', url: PAGE, now }))
+    try {
+      if (!layers) layers = await discover(http, raw)
+      const warnings = []
+      for (const l of layers) {
+        const url = `${l}/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson`
+        const { json, body } = await http.fetchJson(url)
+        raw.push({ url, body })
+        warnings.push(...featuresToWarnings(json.features || [], { issuer: 'LITHUANIAN', prefix: 'lithuanian-local', url: PAGE, now }))
+      }
+      return { warnings, raw }
+    } catch (e) {
+      layers = null
+      if (!e.raw) e.raw = raw // the probe report then shows what was found
+      throw e
     }
-    return { warnings, raw }
   },
   _reset () { layers = null }
 }

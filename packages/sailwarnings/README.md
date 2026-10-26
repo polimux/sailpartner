@@ -11,12 +11,12 @@ A Signal K server plugin that collects navigational warnings for the Baltic, fil
 | Source | Covers | Status |
 |---|---|---|
 | **BALTICO / Sjöfartsverket** (NAVTEX + VHF pages) | Coastal warnings of all Baltic states: German, Danish, Polish, Lithuanian, Latvian, Estonian, Finnish, Swedish, Russian, plus BALTIC SEA NAV WARNs | ✅ enabled, parser tested against the live format |
-| **DWD** coastal wind warnings | Official near-gale, gale and storm warnings for the German coastal areas, with area polygons (DWD map service `dwd:Warnungen_Kueste`; falls back to the WarnWetter app file) | ✅ enabled, 🧪 map layer to be confirmed with the probe |
-| **Traficom** (Finland) | Finnish local nautical warnings. Digitraffic stopped carrying them in 2026; Traficom publishes them in its open WFS service since 13 Jan 2026. The layer is looked up by name. | ✅ enabled, 🧪 layer to be confirmed with the probe |
+| **DWD** coastal wind warnings | Official near-gale, gale and storm warnings for the German coastal areas, with area polygons (DWD map service `dwd:Warnungen_Kueste`; falls back to the WarnWetter app file) | ✅ enabled, confirmed live (26 Oct 2026). German text: English title, wind phrases translated, original kept |
+| **Traficom** (Finland) | Finnish local nautical warnings. Digitraffic stopped carrying them in 2026; Traficom publishes them in its open WFS service since 13 Jan 2026. Layers `avoin:navigational_warnings_*` (S-124 fields), looked up by name. | ✅ enabled, confirmed live |
 | **On-board barometer** | Your own pressure sensor, 3-hour tendency | ✅ enabled |
-| navtex.lv | Latvian NAVTEX messages | 🧪 off by default. The site sends an incomplete certificate chain; the plugin fetches the missing certificate like a browser does |
+| navtex.lv | What a NAVTEX receiver in Latvia picks up on 518 kHz — all stations in range, with reception errors. Only clean Baltic warnings are kept | 🧪 off by default: adds nothing BALTICO doesn't have. The site sends an incomplete certificate chain; the plugin fetches the missing certificate like a browser does |
 | LTSA ([hydro.eltsa.lt](https://hydro.eltsa.lt/nw/en.html)) | Lithuanian national warnings. The page is an ArcGIS map; the plugin finds the map service in its script | 🧪 off by default |
-| ELWIS | BfS and firing ranges (Todendorf/Putlos) | 🔎 probe only — parser follows |
+| ELWIS | BfS, including the weekly firing times for Todendorf/Putlos (issued by WSA Lübeck) | 🔎 probe only — parser follows |
 
 Traficom, navtex.lv and LTSA only add local warnings; the coastal warnings of Finland, Latvia and Lithuania already arrive through BALTICO. While BALTICO works, a failure of one of them is shown in grey ("not reachable — its warnings still arrive via BALTICO") and not as an alarm on the Brief. A source that fails three times in a row is retried every 6 hours; the Refresh button always tries.
 
