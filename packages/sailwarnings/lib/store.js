@@ -55,6 +55,7 @@ class Store {
   markError (id, err, now = new Date()) {
     const s = this.sourceStatus(id)
     s.lastError = { at: now.toISOString(), message: String(err && err.message ? err.message : err) }
+    s.failures = (s.failures || 0) + 1
     this.save()
   }
 
@@ -98,6 +99,7 @@ class Store {
     const st = this.sourceStatus(sourceId)
     st.lastSuccess = nowIso
     st.lastError = null
+    st.failures = 0
     st.count = warnings.length
     this.pruneHistory(now)
     this.save()

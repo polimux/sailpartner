@@ -109,8 +109,16 @@ module.exports = function (app, deps = {}) {
     } catch (e) { app.debug(`raw save failed: ${e.message}`) }
   }
 
-  async function runSource (src) {
+  // After 3 failures in a row a source is only retried every 6 hours, so an
+  // unreachable site doesn't cost a timeout every hour.
+  const BACKOFF_AFTER = 3
+  const BACKOFF_MS = 6 * 3600e3
+
+  async function runSource (src, { force = false } = {}) {
     if (running.has(src.id)) return
+    const st = store.sourceStatus(src.id)
+    if (!force && (st.failures || 0) >= BACKOFF_AFTER && st.lastAttempt &&
+        Date.now() - Date.parse(st.lastAttempt) < BACKOFF_MS) return
     running.add(src.id)
     store.markAttempt(src.id)
     try {
@@ -279,6 +287,7 @@ module.exports = function (app, deps = {}) {
         name: s.name,
         enabled: options.sources[s.id].enabled,
         experimental: !!s.experimental,
+        coveredBy: s.coveredBy || null,
         probeOnly: !!s.probeOnly,
         attribution: s.attribution,
         ...store.sourceStatus(s.id)
@@ -317,7 +326,7 @@ module.exports = function (app, deps = {}) {
     router.post('/refresh', (req, res) => {
       if (!store) return res.status(503).json({ error: 'not started' })
       const active = SOURCES.filter(s => options.sources[s.id].enabled)
-      Promise.all(active.map(runSource)).then(() => res.json({ ok: true, sources: active.map(s => s.id) }))
+      Promise.all(active.map(s => runSource(s, { force: true }))).then(() => res.json({ ok: true, sources: active.map(s => s.id) }))
     })
   }
 

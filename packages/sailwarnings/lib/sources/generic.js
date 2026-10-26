@@ -8,22 +8,27 @@
 const { htmlToText } = require('../html')
 const { parseWarningBlocks } = require('../blocks')
 
-function textSource ({ id, name, urls, attribution }) {
+function textSource ({ id, name, urls, attribution, coveredBy = null, timeoutMs = 10000 }) {
   return {
     id,
     name,
     urls,
     attribution,
+    coveredBy,
     defaultEnabled: false,
     defaultIntervalMin: 60,
     experimental: true,
     async fetch ({ http, now }) {
       // try each address in turn (e.g. https first, then http)
-      let body = null; let url = null; let lastErr = null
+      let body = null; let url = null; const errors = []
       for (const u of urls) {
-        try { body = await http.fetchText(u); url = u; break } catch (e) { lastErr = e }
+        try { body = await http.fetchText(u, { timeoutMs }); url = u; break } catch (e) { errors.push(e) }
       }
-      if (body === null) throw lastErr
+      if (body === null) {
+        // same reason for every address (e.g. https and http both time out): say it once
+        const msgs = [...new Set(errors.map(e => e.message.replace(/\(https?:\/\//, '(')))]
+        throw new Error(msgs.join(' · '))
+      }
       const text = /<html|<body|<div/i.test(body) ? htmlToText(body) : body
       const warnings = parseWarningBlocks(text, { now }).map(w => ({ ...w, url }))
       if (!warnings.length && !/NAV\s*WARN/i.test(text)) {
@@ -59,14 +64,16 @@ module.exports = {
     id: 'navtexlv',
     name: 'navtex.lv (Latvia)',
     urls: ['https://www.navtex.lv/', 'http://www.navtex.lv/'],
-    attribution: 'Latvian Hydrographic Service'
+    attribution: 'Latvian Hydrographic Service',
+    coveredBy: 'BALTICO'
   }),
   // Official portal named in Lithuania's 2024 national report to the IHO (BSHC29).
   ltsa: textSource({
     id: 'ltsa',
     name: 'LTSA (Lithuania)',
     urls: ['https://hydro.eltsa.lt/nw/en.html'],
-    attribution: 'Lithuanian Transport Safety Administration'
+    attribution: 'Lithuanian Transport Safety Administration',
+    coveredBy: 'BALTICO'
   }),
   dwd: probeSource({
     id: 'dwd',

@@ -5,9 +5,9 @@ const USER_AGENT = `sailwarnings/${pkg.version} (Signal K plugin; +https://githu
 
 // Node's fetch reports network problems only as "fetch failed"; the real reason
 // (DNS, refused, timeout, certificate) is in err.cause. Turn it into a useful message.
-function describeError (e, url) {
+function describeError (e, url, timeoutMs = 20000) {
   const host = (() => { try { return new URL(url).host } catch (x) { return url } })()
-  if (e && e.name === 'TimeoutError') return `timeout after 20 s (${host})`
+  if (e && e.name === 'TimeoutError') return `no answer within ${Math.round(timeoutMs / 1000)} s (${host}) — site down, or not reachable from your network`
   const c = e && e.cause
   const code = c && (c.code || (c.errors && c.errors[0] && c.errors[0].code))
   const known = {
@@ -36,7 +36,7 @@ async function fetchText (url, { timeoutMs = 20000, headers = {} } = {}) {
       redirect: 'follow'
     })
   } catch (e) {
-    const err = new Error(describeError(e, url))
+    const err = new Error(describeError(e, url, timeoutMs))
     err.cause = e
     throw err
   }

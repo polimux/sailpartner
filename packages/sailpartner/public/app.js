@@ -221,10 +221,18 @@ function renderBrief () {
   nav('brief')
 }
 
+// A national source that only repeats what BALTICO already carries is no alarm
+// while BALTICO itself works.
+function coveredOk (s) {
+  if (!s.coveredBy) return false
+  const by = (state.sources || []).find(x => x.enabled && !x.lastError && x.lastSuccess && x.name.startsWith(s.coveredBy))
+  return !!by
+}
+
 function sourcesStatus () {
   if (!state.sources) return { text: 'Warnings plugin not reachable', level: 'amber' }
   const enabled = state.sources.filter(s => s.enabled && !s.probeOnly)
-  const failing = enabled.filter(s => s.lastError)
+  const failing = enabled.filter(s => s.lastError && !coveredOk(s))
   const short = n => n.replace(/ \(.*\)$/, '').split(' / ')[0]
   if (failing.length) return { text: `${failing.length === 1 ? short(failing[0].name) : failing.length + ' warning sources'} failing — see Warnings`, level: 'amber' }
   const last = enabled.map(s => s.lastSuccess).filter(Boolean).sort().pop()
@@ -1039,14 +1047,17 @@ function renderWarnings () {
   let y = 592
   for (const s of (state.sources || []).filter(x => x.enabled).concat((state.sources || []).filter(x => !x.enabled))) {
     if (y > 730) break
-    const col = !s.enabled ? C.dim : s.lastError ? C.amber : s.lastSuccess ? C.green : C.dim
+    const covered = s.lastError && coveredOk(s)
+    const col = !s.enabled ? C.dim : covered ? C.dim : s.lastError ? C.amber : s.lastSuccess ? C.green : C.dim
     el('circle', { cx: 824, cy: y - 5, r: 5, fill: col })
     fit(T(838, y, s.name.replace(/ \(.*\)$/, ''), 15, s.enabled ? C.soft : C.dim), 250, 11)
-    const st = !s.enabled ? 'off' : s.probeOnly ? 'probe only' : s.lastError ? `failed ${clock(s.lastError.at)}` : s.lastSuccess ? `OK ${clock(s.lastSuccess)} · ${s.count}` : 'waiting'
-    T(1240, y, st, 14, s.lastError ? C.amber : C.muted, { 'text-anchor': 'end' })
+    const retry = (s.failures || 0) >= 3 ? ' · retry 6 h' : ''
+    const st = !s.enabled ? 'off' : s.probeOnly ? 'probe only' : s.lastError ? `${covered ? 'not reachable' : 'failed'} ${clock(s.lastError.at)}${retry}` : s.lastSuccess ? `OK ${clock(s.lastSuccess)} · ${s.count}` : 'waiting'
+    T(1240, y, st, 14, s.lastError && !covered ? C.amber : C.muted, { 'text-anchor': 'end' })
     if (s.enabled && s.lastError) {
       y += 20
-      fit(T(838, y, s.lastError.message, 13, C.amberText), 402, 10)
+      const msg = covered ? `${s.lastError.message} — its warnings still arrive via ${s.coveredBy}` : s.lastError.message
+      fit(T(838, y, msg, 13, covered ? C.muted : C.amberText), 402, 10)
     }
     y += 25
   }

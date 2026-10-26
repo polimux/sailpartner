@@ -111,3 +111,25 @@ test('plugin end to end with mock server', async (t) => {
   plugin.stop()
   assert.ok(fs.existsSync(path.join(app.dir, 'warnings.json')))
 })
+
+test('unreachable source: one clear message, backs off after 3 failures', async (t) => {
+  const app = mockApp()
+  let calls = 0
+  const timeout = () => { calls++; const e = new Error('no answer within 10 s (www.navtex.lv) — site down, or not reachable from your network'); throw e }
+  const plugin = createPlugin(app, { http: { fetchText: async () => timeout(), fetchJson: async () => timeout() } })
+  t.after(() => plugin.stop())
+  plugin.start({ sources: { sjofartsverket: { enabled: false }, digitraffic: { enabled: false } } })
+  const lv = require('../lib/sources').find(s => s.id === 'navtexlv')
+  assert.equal(lv.coveredBy, 'BALTICO')
+  await plugin._internals.runSource(lv)
+  const st = plugin._internals.store.sourceStatus('navtexlv')
+  assert.equal(st.lastError.message, 'no answer within 10 s (www.navtex.lv) — site down, or not reachable from your network', 'https and http fail the same way: said once')
+  assert.equal(calls, 2)
+  await plugin._internals.runSource(lv)
+  await plugin._internals.runSource(lv)
+  assert.equal(st.failures, 3)
+  await plugin._internals.runSource(lv)
+  assert.equal(calls, 6, 'fourth run skipped: waits 6 h')
+  await plugin._internals.runSource(lv, { force: true })
+  assert.equal(calls, 8, 'Refresh button still tries')
+})
