@@ -42,6 +42,8 @@ function selfData () {
 function mockApp () {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'sp-'))
   const self = selfData()
+  const subscribers = []
+  const publish = d => subscribers.forEach(cb => cb(d))
   return {
     dir,
     self,
@@ -52,6 +54,7 @@ function mockApp () {
     handleMessage: (id, msg) => {
       for (const u of msg.updates || []) {
         for (const v of u.values || []) {
+          publish({ path: v.path, value: v.value, context: 'vessels.self', source: { label: id, type: 'plugin' }, $source: id, timestamp: new Date().toISOString() })
           const m = /^(notifications\.[a-z]+\.warnings)\.(.+)$/.exec(v.path)
           if (m) {
             const node = self[m[1]] || (self[m[1]] = {})
@@ -63,6 +66,17 @@ function mockApp () {
       }
     },
     registerResourceProvider: () => {},
+    // Signal K's stream of all updates for our own vessel, and a helper that
+    // feeds it like an NMEA connection would (sets the value and publishes it).
+    streambundle: {
+      getSelfBus: () => ({
+        onValue: cb => { subscribers.push(cb); return () => subscribers.splice(subscribers.indexOf(cb), 1) }
+      })
+    },
+    emit (path, value, source, $source) {
+      self[path] = { value }
+      publish({ path, value, context: 'vessels.self', source, $source, timestamp: new Date().toISOString() })
+    },
     setPluginStatus: () => {},
     debug: () => {}
   }
@@ -76,6 +90,9 @@ function mockRouter () {
     const res = {
       statusCode: 200,
       status (c) { this.statusCode = c; return this },
+      headers: {},
+      setHeader (k, v) { this.headers[k] = v },
+      send (d) { resolve({ status: this.statusCode, body: d, headers: this.headers }) },
       json (d) { resolve({ status: this.statusCode, body: d }) }
     }
     Promise.resolve(routes[`${m} ${p}`]({ query, body }, res)).catch(reject)

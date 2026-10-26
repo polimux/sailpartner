@@ -15,12 +15,70 @@ class History {
     this.days = state.days || {}
     this.lastPos = state.lastPos || null
     this.bucket = null
+    // battery: 10-minute points for 7 days, Ah charged/used per day
+    this.battery = state.battery || []
+    this.batteryDays = state.batteryDays || {}
+    this.lastFull = state.lastFull || null
+    this.lastBat = null
+    this.batBucket = null
   }
 
-  toJSON () { return { minutes: this.minutes, days: this.days, lastPos: this.lastPos } }
+  toJSON () { return { minutes: this.minutes, days: this.days, lastPos: this.lastPos, battery: this.battery, batteryDays: this.batteryDays, lastFull: this.lastFull } }
+
+  sampleBattery (b, t, dayKey) {
+    if (!b || (typeof b.soc !== 'number' && typeof b.current !== 'number')) return
+    const day = this.batteryDays[dayKey] || (this.batteryDays[dayKey] = { chargedAh: 0, usedAh: 0, minSoc: null, maxSoc: null })
+    if (typeof b.current === 'number' && this.lastBat) {
+      const dtH = Math.min(120, (t - this.lastBat) / 1000) / 3600
+      if (dtH > 0) {
+        if (b.current > 0) day.chargedAh += b.current * dtH
+        else day.usedAh += -b.current * dtH
+      }
+    }
+    this.lastBat = t
+    if (typeof b.soc === 'number') {
+      day.minSoc = day.minSoc === null ? b.soc : Math.min(day.minSoc, b.soc)
+      day.maxSoc = day.maxSoc === null ? b.soc : Math.max(day.maxSoc, b.soc)
+      if (b.soc >= 99) this.lastFull = t
+    }
+    const slot = Math.floor(t / 600e3) * 600e3
+    if (!this.batBucket || this.batBucket.t !== slot) {
+      if (this.batBucket) this.pushBattery(this.batBucket)
+      this.batBucket = { t: slot, n: 0, soc: 0, v: 0, a: 0, ns: 0, nv: 0, na: 0 }
+    }
+    const k = this.batBucket
+    if (typeof b.soc === 'number') { k.soc += b.soc; k.ns++ }
+    if (typeof b.voltage === 'number') { k.v += b.voltage; k.nv++ }
+    if (typeof b.current === 'number') { k.a += b.current; k.na++ }
+  }
+
+  pushBattery (k) {
+    this.battery.push({
+      t: k.t,
+      soc: k.ns ? Math.round(k.soc / k.ns * 10) / 10 : null,
+      v: k.nv ? Math.round(k.v / k.nv * 100) / 100 : null,
+      a: k.na ? Math.round(k.a / k.na * 10) / 10 : null
+    })
+    const cut = k.t - 7 * DAY
+    while (this.battery.length && this.battery[0].t < cut) this.battery.shift()
+    const keys = Object.keys(this.batteryDays).sort()
+    while (keys.length > 14) delete this.batteryDays[keys.shift()]
+  }
+
+  batterySeries (t = Date.now()) {
+    const all = this.batBucket ? this.battery.concat([{ t: this.batBucket.t, soc: this.batBucket.ns ? this.batBucket.soc / this.batBucket.ns : null }]) : this.battery
+    return all.filter(p => p.t >= t - 7 * DAY && typeof p.soc === 'number').sort((a, b) => a.t - b.t).map(p => ({ t: new Date(p.t).toISOString(), soc: Math.round(p.soc * 10) / 10 }))
+  }
+
+  batteryDay (key) {
+    const d = this.batteryDays[key]
+    if (!d) return null
+    return { chargedAh: Math.round(d.chargedAh), usedAh: Math.round(d.usedAh), minSoc: d.minSoc === null ? null : Math.round(d.minSoc), maxSoc: d.maxSoc === null ? null : Math.round(d.maxSoc) }
+  }
 
   // Called every few seconds with the live snapshot.
   sample (s, t = Date.now(), dayKey) {
+    if (s.battery) this.sampleBattery(s.battery, t, dayKey)
     const minute = Math.floor(t / 60e3) * 60e3
     if (!this.bucket || this.bucket.t !== minute) {
       this.flush()

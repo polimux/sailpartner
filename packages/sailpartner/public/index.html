@@ -20,6 +20,18 @@
   </div>
 </div>
 
+<div id="note" class="overlay" hidden>
+  <div class="sheet">
+    <h2>Add a logbook entry</h2>
+    <input id="note-text" type="text" maxlength="200" placeholder="Passed Fehmarnsund bridge" autocomplete="off">
+    <div class="actions">
+      <button id="note-cancel" class="secondary">Cancel</button>
+      <button id="note-save" class="primary">Save</button>
+    </div>
+    <p id="note-error" class="error" hidden></p>
+  </div>
+</div>
+
 <div id="toast" class="toast" hidden></div>
 <script src="app.js"></script>
 </body>

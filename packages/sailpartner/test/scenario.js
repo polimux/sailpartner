@@ -13,7 +13,15 @@ function weatherAt (i) {
   // i = hours since 26 Oct 00:00Z
   const L = local(i % 24)
   const day = Math.floor(i / 24)
-  if (day > 0) return { w: 12, d: 290, r: 0, p: 1013, wave: 0.6 }
+  // pressure: falls to a low around 17h on day 0, rises behind the front, falls again on day 2
+  const p = i <= 16 ? 1009 - Math.max(0, L - 9) * 0.5 : i <= 40 ? 1005 + (i - 16) * 0.45 : 1015.8 - (i - 40) * 0.3
+  if (day === 1) return { w: 12, d: 290, r: 0, p, wave: 0.6 }
+  if (day >= 2) {
+    // a southerly building on day 2 with rain in the afternoon
+    const w = Math.min(22, 10 + Math.max(0, i - 48) * 0.8)
+    const rain = { 14: 0.4, 15: 1.2, 16: 1.8, 17: 0.9, 18: 0.3 }[L] || 0
+    return { w, d: 180 + Math.min(20, (i - 48)), r: rain, p, wave: Math.min(1.4, 0.4 + Math.max(0, i - 48) * 0.06) }
+  }
   let w
   if (L <= 9) w = 12
   else if (L <= 15) w = 12 + (L - 9) * 1.5
@@ -21,7 +29,6 @@ function weatherAt (i) {
   else w = 16
   const d = L < 13 ? 225 : L === 13 ? 247 : 270
   const rain = { 13: 0.2, 14: 1.6, 15: 2.8, 16: 1.9, 17: 0.7 }[L] || 0
-  const p = 1009 - Math.max(0, L - 9) * 0.5
   const wave = Math.min(1.2, 0.4 + Math.max(0, L - 9) * 0.12)
   return { w, d, r: rain, p, wave }
 }

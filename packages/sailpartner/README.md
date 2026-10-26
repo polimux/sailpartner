@@ -37,11 +37,46 @@ The chart tiles need internet (so does the forecast). They are cached by the bro
 
 ### Instruments
 
-![Instruments](docs/instruments.png)
-
 Bow-up wind dial (A = apparent, T = true), true wind, 10-minute gust, the last 3 hours as arrows; SmartShunt battery; barometer over 24 hours with the 3-hour tendency.
 
-*Weather, Warnings, Battery and Logbook pages follow.*
+![Instruments](docs/instruments.png)
+
+### Weather
+
+![Weather](docs/weather.png)
+
+48 hours at your position with the same gust bars (nights shaded), rain and waves, the pressure measured on board joined to the forecast pressure (with the coming low or high), and the next three days in two lines each.
+
+### Warnings
+
+![Warnings](docs/warnings.png)
+
+Everything from `signalk-baltic-warnings`: *Near me*, *On route* (the route from the Passage tab) or *All Baltic*, sorted by severity and distance. Tap a warning for its full official text, validity and source. Source health at the bottom right, with *Refresh*.
+
+### Battery
+
+![Battery](docs/battery.png)
+
+State of charge over 7 days with the 50 % line, Ah charged and used per day (integrated from the SmartShunt current), all live values, the lowest charge this week, the last full charge, and whether charging keeps up with use.
+
+### Logbook
+
+![Logbook](docs/logbook.png)
+
+Sailpartner keeps its own logbook:
+
+- **automatic** entries when you leave a berth or anchorage and when you arrive, and every hour under way — time, position, COG, SOG, wind, pressure;
+- **quick entries** for today with one tap: *Cast off, Reefed, Unreefed, Tacked, Gybed, Engine on/off, Moored, Anchored*, or a free *Note…*; tap your own entry to delete it;
+- **day** totals (distance, time under way, max speed) and **season** totals;
+- **Export CSV** for the selected day.
+
+Stored as one JSON file per day in the plugin's data folder.
+
+### NMEA
+
+![NMEA](docs/nmea.png)
+
+Everything arriving in Signal K for your boat, live (refreshes every second): one row per value and source, with the NMEA 2000 PGN (blue) or NMEA 0183 sentence (yellow) it came from, how fresh it is and how often it arrives; a running feed of updates; and the sources (devices on the bus, serial ports, plugins). Use it to check that your instruments arrive before you trust the other pages.
 
 ## The verdict
 
@@ -91,6 +126,13 @@ Enable **Sailpartner** in *Server → Plugin Config*, open `http://<pi>:3000/sai
 | PUT | `/trip` | `{ "destination": "Kühlungsborn" }` or `{ "waypoints": [{latitude, longitude}, …] }` (from the boat) or `{ "points": [...] }` (full route), plus optional `departure` (`"09:00"` or ISO) and `speedKn`. Fields left out keep their value |
 | DELETE | `/trip` | no trip |
 | GET | `/destinations` | saved harbours |
+| GET | `/weather` | 48 hours, next days, pressure measured and forecast |
+| GET | `/battery` | live values, 7-day curve, Ah per day |
+| GET | `/logbook?day=YYYY-MM-DD` | entries, day and season totals |
+| POST | `/logbook` | `{ "text": "Reefed" }` — a manual entry with the current position, wind and pressure |
+| DELETE | `/logbook?day=…&t=…` | remove a manual entry |
+| GET | `/logbook/export?day=…` | the day as CSV |
+| GET | `/data?since=<seq>` | live data: one row per path and source, recent updates, sources |
 
 The page sends the planned route to `signalk-baltic-warnings` (`PUT /plugins/signalk-baltic-warnings/route`), so warnings near it are flagged "on route".
 
@@ -101,4 +143,4 @@ npm test
 npm run demo   # http://localhost:3333 — simulated morning, no boat needed
 ```
 
-The demo also runs `signalk-baltic-warnings` from the repository with a saved copy of the BALTICO warnings page.
+The demo also runs `signalk-baltic-warnings` from the repository with a saved copy of the BALTICO warnings page, simulates live NMEA 2000 / NMEA 0183 / plugin traffic for the NMEA tab, and seeds a week of battery history and yesterday's logbook. All demo data is made up.

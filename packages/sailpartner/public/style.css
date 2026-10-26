@@ -34,3 +34,5 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
 .error { color: var(--red); font-size: 17px; }
 .toast { position: fixed; left: 50%; bottom: 72px; transform: translateX(-50%); background: #1c2a3a; color: var(--text); padding: 12px 20px; border-radius: 10px; font-size: 18px; }
 .toast[hidden] { display: none; }
+#note-text { width: 100%; height: 56px; font-size: 22px; padding: 0 14px; border-radius: 10px; border: 2px solid var(--line); background: var(--panel-2); color: var(--text); }
+#note-text:focus { outline: none; border-color: var(--blue); }

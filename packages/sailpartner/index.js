@@ -6,6 +6,9 @@ const http = require('./lib/http')
 const { fetchForecasts } = require('./lib/openmeteo')
 const { routeWeather, sailingHour, DEFAULT_THRESHOLDS } = require('./lib/routeweather')
 const L = require('./lib/local')
+const { Feed } = require('./lib/feed')
+const { Logbook } = require('./lib/logbook')
+const { weatherPage } = require('./lib/weather')
 const P = require('./lib/passage')
 const { History } = require('./lib/history')
 const live = require('./lib/live')
@@ -30,6 +33,9 @@ module.exports = function (app, deps = {}) {
   let timers = []
   let forecast = { at: 0, key: null, points: [], list: [], error: null }
   let forecastPromise = null
+  let feed = null
+  let unsubscribe = null
+  let logbook = null
 
   const pointSchema = {
     type: 'object',
@@ -277,17 +283,110 @@ module.exports = function (app, deps = {}) {
     return `${f(point.latitude, 'N', 'S')} ${f(point.longitude, 'E', 'W')}`
   }
 
+  // ----- weather, battery, logbook -----------------------------------------
+  function buildWeather () {
+    const now = clock()
+    const s = snapshot()
+    return {
+      now: new Date(now).toISOString(),
+      timezone: tz(),
+      place: placeName(s.position, live.boatState(s)),
+      ...weatherPage({ forecast: localForecast(), now, tz: tz(), thresholds: thresholds(), measured: history.pressureSeries(24, now) }),
+      thresholds: thresholds(),
+      forecast: { updated: forecast.at ? new Date(forecast.at).toISOString() : null, error: forecast.error, source: 'Open-Meteo' }
+    }
+  }
+
+  function buildBattery () {
+    const now = clock()
+    const s = snapshot()
+    const today = T.dayKey(now, tz())
+    const days = []
+    for (let i = 6; i >= 0; i--) {
+      const key = T.addDays(today, -i)
+      const d = history.batteryDay(key)
+      days.push({ key, label: i === 0 ? 'Today' : new Intl.DateTimeFormat('en-GB', { timeZone: tz(), weekday: 'short' }).format(new Date(key + 'T12:00:00Z')), ...(d || { chargedAh: null, usedAh: null, minSoc: null, maxSoc: null }) })
+    }
+    const withData = days.filter(d => d.usedAh !== null)
+    const lowest = withData.filter(d => d.minSoc !== null).reduce((a, d) => (!a || d.minSoc < a.minSoc ? d : a), null)
+    const full = withData.filter(d => d.label !== 'Today')
+    const charged = full.reduce((a, d) => a + d.chargedAh, 0)
+    const used = full.reduce((a, d) => a + d.usedAh, 0)
+    let advice = null
+    if (full.length >= 2) {
+      const net = Math.round((charged - used) / full.length)
+      if (net < -5) advice = { level: 'amber', text: `Using about ${-net} Ah a day more than you charge — plan engine, shore power or a sunny day.` }
+      else advice = { level: 'green', text: `Charging keeps up with use (${net >= 0 ? '+' : ''}${net} Ah a day on average).` }
+    }
+    return {
+      now: new Date(now).toISOString(),
+      timezone: tz(),
+      live: s.battery,
+      series: history.batterySeries(now),
+      days,
+      lowest: lowest ? { soc: lowest.minSoc, day: lowest.label } : null,
+      lastFull: history.lastFull ? new Date(history.lastFull).toISOString() : null,
+      advice
+    }
+  }
+
+  function buildLogbook (day) {
+    const now = clock()
+    const today = T.dayKey(now, tz())
+    const key = /^\d{4}-\d{2}-\d{2}$/.test(day || '') ? day : today
+    const stats = history.day(key) || (logbook.daysTotals[key] || null)
+    const days = [...new Set([...logbook.days(), ...Object.keys(logbook.daysTotals), today])].sort()
+    return {
+      now: new Date(now).toISOString(),
+      timezone: tz(),
+      day: key,
+      today,
+      days,
+      entries: logbook.entries(key),
+      stats,
+      season: logbook.season(key.slice(0, 4))
+    }
+  }
+
   // ----- lifecycle --------------------------------------------------------
   function tick () {
     const s = snapshot()
     history.sample(s, clock(), T.dayKey(clock(), tz()))
   }
 
+  function logTick () {
+    const now = clock()
+    const s = snapshot()
+    const day = T.dayKey(now, tz())
+    const boatState = live.boatState(s)
+    logbook.tick({ t: now, day, boatState, snapshot: s, placeName: boatState === 'underway' ? null : placeName(s.position, boatState) })
+    logbook.setDayTotals(day, history.day(day))
+  }
+
+  function subscribeFeed () {
+    feed = new Feed()
+    try {
+      if (app.streambundle && typeof app.streambundle.getSelfBus === 'function') {
+        unsubscribe = app.streambundle.getSelfBus().onValue(d => feed.onDelta(d))
+      } else if (app.signalk && typeof app.signalk.on === 'function') {
+        const handler = delta => {
+          if (delta.context && app.selfContext && delta.context !== app.selfContext) return
+          for (const u of delta.updates || []) for (const v of u.values || []) feed.onDelta({ path: v.path, value: v.value, source: u.source, $source: u.$source, timestamp: u.timestamp })
+        }
+        app.signalk.on('delta', handler)
+        unsubscribe = () => app.signalk.removeListener('delta', handler)
+      }
+    } catch (e) { app.debug(`live data subscription failed: ${e.message}`) }
+  }
+
   plugin.start = function (opts) {
     options = withDefaults(opts)
     history = new History(loadJson('history.json', {}))
     state = loadJson('state.json', { trip: null })
+    logbook = deps.logbook || new Logbook(path.join(app.getDataDirPath(), 'logbook'))
+    subscribeFeed()
     timers.push(setInterval(tick, 2000))
+    timers.push(setInterval(logTick, 60e3))
     timers.push(setInterval(() => saveJson('history.json', history.toJSON()), 5 * 60e3))
     timers.push(setInterval(() => refreshForecast(), 5 * 60e3))
     refreshForecast()
@@ -297,6 +396,8 @@ module.exports = function (app, deps = {}) {
   plugin.stop = function () {
     timers.forEach(t => clearInterval(t))
     timers = []
+    if (typeof unsubscribe === 'function') { try { unsubscribe() } catch (e) { /* ignore */ } }
+    unsubscribe = null
     if (history) { history.flush(); saveJson('history.json', history.toJSON()) }
   }
 
@@ -315,6 +416,56 @@ module.exports = function (app, deps = {}) {
       if (!options) return res.status(503).json({ error: 'not started' })
       if (!forecast.list.length || req.query.refresh) await refreshForecast(!!req.query.refresh)
       res.json(buildBrief())
+    })
+
+    router.get('/data', (req, res) => {
+      if (!feed) return res.status(503).json({ error: 'not started' })
+      res.json(feed.snapshot({ logSince: Number(req.query.since) || 0 }))
+    })
+
+    router.get('/weather', async (req, res) => {
+      if (!options) return res.status(503).json({ error: 'not started' })
+      if (!forecast.list.length) await refreshForecast()
+      res.json(buildWeather())
+    })
+
+    router.get('/battery', (req, res) => {
+      if (!options) return res.status(503).json({ error: 'not started' })
+      res.json(buildBattery())
+    })
+
+    router.get('/logbook', (req, res) => {
+      if (!options) return res.status(503).json({ error: 'not started' })
+      res.json(buildLogbook(req.query.day))
+    })
+
+    // POST /logbook { text } — a manual entry with the current position, wind and pressure
+    router.post('/logbook', async (req, res) => {
+      try {
+        const b = await readBody(req)
+        const text = String(b.text || '').trim()
+        if (!text) return res.status(400).json({ error: 'text is required' })
+        const now = clock()
+        const day = T.dayKey(now, tz())
+        logbook.add(day, { t: now, kind: 'manual', text, snapshot: snapshot() })
+        res.json(buildLogbook(day))
+      } catch (e) { res.status(400).json({ error: e.message }) }
+    })
+
+    // DELETE /logbook?day=YYYY-MM-DD&t=ISO — remove a manual entry
+    router.delete('/logbook', (req, res) => {
+      if (!options) return res.status(503).json({ error: 'not started' })
+      const ok = logbook.remove(req.query.day, req.query.t)
+      if (!ok) return res.status(404).json({ error: 'no manual entry at that time' })
+      res.json(buildLogbook(req.query.day))
+    })
+
+    router.get('/logbook/export', (req, res) => {
+      if (!options) return res.status(503).json({ error: 'not started' })
+      const day = /^\d{4}-\d{2}-\d{2}$/.test(req.query.day || '') ? req.query.day : T.dayKey(clock(), tz())
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+      res.setHeader('Content-Disposition', `attachment; filename="logbook-${day}.csv"`)
+      res.send(logbook.csv(day))
     })
 
     router.get('/destinations', (req, res) => {
@@ -391,6 +542,6 @@ module.exports = function (app, deps = {}) {
     })
   }
 
-  plugin._internals = { buildBrief, buildPassage, refreshForecast, tick, get history () { return history }, get state () { return state } }
+  plugin._internals = { buildBrief, buildPassage, buildWeather, buildBattery, buildLogbook, refreshForecast, tick, logTick, get feed () { return feed }, get logbook () { return logbook }, get history () { return history }, get state () { return state } }
   return plugin
 }

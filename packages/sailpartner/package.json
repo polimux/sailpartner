@@ -1,6 +1,6 @@
 {
   "name": "sailpartner",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Morning brief screen for sailors on Signal K: go/reef/stay verdict, written weather summary, weather along your route at your planning speed, live wind, rain, battery and barometer.",
   "main": "index.js",
   "scripts": {

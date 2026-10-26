@@ -11,7 +11,7 @@ A morning brief and logbook screen for a Hanse 323, running on a Raspberry Pi wi
 | Package | What it does | Status |
 |---|---|---|
 | [`signalk-baltic-warnings`](packages/signalk-baltic-warnings) | Signal K plugin: navigational warnings for the Baltic (BALTICO/NAVTEX for all Baltic states, Digitraffic, on-board barometer), filtered by position and route, published as notifications, chart regions/notes and a REST API | v0.1, tests passing, live sources to be confirmed on the Pi |
-| [`sailpartner`](packages/sailpartner) | Signal K plugin + web app: **Brief** (verdict and day ribbon for here, attention cards), **Passage** (tap a route on the chart: weather along the way at your speed, trip verdict, better departure time, warnings on the route), **Instruments** (wind dial, battery, barometer). Weather, Warnings, Battery and Logbook pages follow | v0.2, tests passing, not yet run on a boat |
+| [`sailpartner`](packages/sailpartner) | Signal K plugin + web app: **Brief** (verdict and day ribbon for here, attention cards), **Passage** (tap a route on the chart: weather along the way at your speed, trip verdict, better departure time, warnings on the route), **Instruments** (wind dial, battery, barometer), **Weather** (48 h), **Warnings**, **Battery** (7 days), **Logbook** (automatic and manual entries, CSV export) and **NMEA** (all live data with PGN/sentence and source) | v0.3, tests passing, not yet run on a boat |
 
 ## Contents
 
@@ -58,6 +58,11 @@ Things to try:
 - **Brief**: the verdict, the day ribbon with gust bars, the attention cards.
 - **Passage**: pick *Kühlungsborn* or tap points on the chart. Change departure and speed with −/+, tap *Use* on the better departure.
 - **Instruments**: wind dial, wind history, battery, barometer.
+- **Weather**: 48 hours of wind and gusts, rain and waves, pressure measured and forecast, the next days.
+- **Warnings**: all warnings with filters, full text, source health.
+- **Battery**: 7 days of charge, Ah charged and used per day.
+- **Logbook**: yesterday's sail (◀), quick entries and notes for today, CSV export.
+- **NMEA**: every value arriving in Signal K, live, with its PGN or sentence and source. In the demo it's simulated traffic; on a real server it's your boat's data — the quickest way to see what Sailpartner actually receives.
 
 To see it as on the boat's 10.1" screen, make the browser window 1280 × 800 or go full screen (F11 on Windows/Linux, Ctrl+Cmd+F on Mac).
 
@@ -217,7 +222,7 @@ Signal K → **Appstore → Available**, search and install, then restart Signal
 | **signalk-derived-data** | Calculates true wind from apparent wind + speed + heading. In its config enable *True Wind* (and *Ground Wind* if you have no log). |
 | **signalk-anchoralarm-plugin** | Anchor watch; Sailpartner shows the drift when you're at anchor |
 | **@signalk/freeboard-sk** | Chart plotter in the browser; shows warning areas from Baltic Warnings |
-| **signalk-logbook** | Automatic and manual logbook entries (used by the coming Logbook page) |
+| **signalk-logbook** *(optional)* | A full-featured logbook. Sailpartner keeps its own simple logbook, so this is only needed if you want its extra features |
 | **signalk-to-influxdb2** *(optional)* | Long-term history in InfluxDB (install InfluxDB via **OpenPlotter → Dashboards** first) |
 
 ### 9. Install Sailpartner and Baltic Warnings
@@ -234,7 +239,7 @@ The script packs both plugins, installs them into `~/.signalk` and restarts Sign
 
 1. Signal K → **Server → Plugin Config** → enable **Baltic Warnings** → **Submit**.
 2. Enable **Sailpartner** → **Submit**.
-3. Open **http://localhost:3000/sailpartner/** — the Brief. The tabs at the bottom lead to **Passage** (plan a trip on the chart) and **Instruments**. It is also listed under **Webapps** in the Signal K menu and works on your phone or tablet on the boat's network (`http://openplotter.local:3000/sailpartner/`).
+3. Open **http://localhost:3000/sailpartner/** — the Brief. The tabs at the bottom lead to **Passage** (plan a trip on the chart), **Instruments**, **Weather**, **Warnings**, **Battery**, **Logbook** and **NMEA** (all live data — check here first that your instruments arrive). It is also listed under **Webapps** in the Signal K menu and works on your phone or tablet on the boat's network (`http://openplotter.local:3000/sailpartner/`).
 
 The first forecast arrives within a few seconds when the Pi has internet. The wind history fills over the first 3 hours, the barometer trend after 2½ hours.
 
@@ -337,5 +342,5 @@ cd packages/sailpartner && npm run demo   # http://localhost:3333 — simulated 
 
 - Raspberry Pi 4/5, PiCAN-M HAT (NMEA 2000), BME280 barometer on I2C, 10.1" 1280×800 touch display
 - OpenPlotter: CAN Bus, I2C, Signal K, Dashboards (InfluxDB 2)
-- Signal K plugins: `signalk-victron-ble` (SmartShunt), `signalk-derived-data`, `signalk-anchoralarm-plugin`, `@signalk/freeboard-sk`, `signalk-logbook`, optional `signalk-to-influxdb2`
+- Signal K plugins: `signalk-victron-ble` (SmartShunt), `signalk-derived-data`, `signalk-anchoralarm-plugin`, `@signalk/freeboard-sk`, optional `signalk-logbook` and `signalk-to-influxdb2`
 - Forecasts: [Open-Meteo](https://open-meteo.com) (wind, gusts, rain, pressure, waves). Warnings: Sjöfartsverket/BALTICO, Fintraffic Digitraffic

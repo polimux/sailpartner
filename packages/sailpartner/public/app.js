@@ -11,8 +11,8 @@ const C = {
 }
 const DROP = 'M0 -7 C3.5 -2.5 5 1 5 2.6 A5 5 0 0 1 -5 2.6 C-5 1 -3.5 -2.5 0 -7 Z'
 const ARROW = 'M0 -11 L6 5 L0 2 L-6 5 Z'
-const PAGES = ['brief', 'passage', 'instruments']
-const TABS = [['Brief', 'brief'], ['Passage', 'passage'], ['Instruments', 'instruments'], ['Weather'], ['Warnings'], ['Battery'], ['Logbook']]
+const PAGES = ['brief', 'passage', 'instruments', 'weather', 'warnings', 'battery', 'logbook', 'nmea']
+const TABS = [['Brief', 'brief'], ['Passage', 'passage'], ['Instruments', 'instruments'], ['Weather', 'weather'], ['Warnings', 'warnings'], ['Battery', 'battery'], ['Logbook', 'logbook'], ['NMEA', 'nmea']]
 
 const state = {
   page: PAGES.includes(location.hash.slice(1)) ? location.hash.slice(1) : 'brief',
@@ -20,6 +20,11 @@ const state = {
   passage: null,
   warnings: null, // full list from signalk-baltic-warnings, null = not reachable
   sources: null,
+  weather: null,
+  battery: null,
+  logbook: null,
+  data: null,
+  ui: { warnFilter: 'near', warnSel: null, warnPage: 0, nmeaFilter: 'All', nmeaPage: 0, logDay: null, logPage: 0, logSel: null },
   tz: undefined
 }
 
@@ -84,7 +89,7 @@ function distNm (a, b) {
 }
 
 // One bar per hour: solid = mean wind, lighter top = up to the gust.
-function gustBars (cols, { x0, cw, base, top, max = 32, bw, reefGust = 24, strongGust = 28, reefWind = 18, stayWind = 25 }) {
+function gustBars (cols, { x0, cw, base, top, max = 32, bw, reefGust = 24, strongGust = 28, reefWind = 18, stayWind = 25, labelEvery = 1 }) {
   const Y = v => base - (base - top) * Math.min(v, max) / max
   const xe = x0 + cw * cols.length
   const meanCol = w => (w >= stayWind ? C.red : w >= reefWind ? C.amber : C.green)
@@ -99,10 +104,10 @@ function gustBars (cols, { x0, cw, base, top, max = 32, bw, reefGust = 24, stron
     if (g > c.w) {
       R(cx - bw / 2, Y(g), bw, Y(c.w) - Y(g), gustCol(g), { opacity: 0.32, rx: 3 })
       el('line', { x1: cx - bw / 2, x2: cx + bw / 2, y1: Y(g), y2: Y(g), stroke: gustCol(g), 'stroke-width': 3 })
-      T(cx, Y(g) - 6, Math.round(g), 13, gustCol(g) === C.green ? C.muted : gustCol(g), { 'text-anchor': 'middle' })
+      if (i % labelEvery === 0) T(cx, Y(g) - 6, Math.round(g), 13, gustCol(g) === C.green ? C.muted : gustCol(g), { 'text-anchor': 'middle' })
     }
-    R(cx - bw / 2, Y(c.w), bw, base - Y(c.w), meanCol(c.w), { rx: 3 })
-    if (base - Y(c.w) > 20) T(cx, base - 7, Math.round(c.w), 16, '#04221a', { 'text-anchor': 'middle', 'font-weight': 500 })
+    R(cx - bw / 2, Y(c.w), bw, base - Y(c.w), meanCol(c.w), { rx: Math.min(3, bw / 4) })
+    if (i % labelEvery === 0 && base - Y(c.w) > 20) T(cx, base - 7, Math.round(c.w), labelEvery > 1 ? 13 : 16, '#04221a', { 'text-anchor': 'middle', 'font-weight': 500 })
   })
   return Y
 }
@@ -113,15 +118,15 @@ function nav (active) {
   TABS.forEach(([label, page], i) => {
     const cx = w * i + w / 2
     const a = page === active
-    T(cx, 783, label, 19, a ? C.text : C.muted, { 'text-anchor': 'middle', 'font-weight': a ? 500 : 400 })
-    if (a) R(cx - 45, 794, 90, 4, C.green)
+    T(cx, 783, label, 18, a ? C.text : C.muted, { 'text-anchor': 'middle', 'font-weight': a ? 500 : 400 })
+    if (a) R(cx - 40, 794, 80, 4, C.green)
     tap(R(w * i, 752, w, 48, 'transparent'), () => (page ? go(page) : toast(`${label} page is coming in a later version`)))
   })
   const n = state.brief && state.brief.attention ? state.brief.attention.cards.filter(c => c.kind === 'warning').length + state.brief.attention.more : 0
   if (n) {
     const cx = w * 4 + w / 2
-    el('circle', { cx: cx + 50, cy: 770, r: 11, fill: C.red })
-    T(cx + 50, 775, n, 15, '#fff', { 'text-anchor': 'middle', 'font-weight': 500 })
+    el('circle', { cx: cx + 46, cy: 768, r: 11, fill: C.red })
+    T(cx + 46, 773, n, 15, '#fff', { 'text-anchor': 'middle', 'font-weight': 500 })
   }
 }
 
@@ -658,16 +663,495 @@ function barometerPanel (b) {
   ;[[0, '−24h'], [12, '−12h'], [21, '−3h'], [24, 'now']].forEach(([h, l]) => T(x0 + (x1 - x0) * h / 24, 726, l, 14, C.muted, { 'text-anchor': h === 24 ? 'end' : h === 0 ? 'start' : 'middle' }))
 }
 
+// ---------------------------------------------------------------- shared bits
+function header (title, right) {
+  T(40, 44, title, 30, C.text, { 'font-weight': 500 })
+  if (right) fit(T(1240, 44, right, 20, C.muted, { 'text-anchor': 'end' }), 560, 14)
+}
+function button (x, y, w, h, label, fn, { active = false, size = 17, primary = false } = {}) {
+  R(x, y, w, h, primary ? C.blue : active ? '#16304a' : C.bg, { rx: 8, stroke: active ? C.blue : C.line, 'stroke-width': 2 })
+  fit(T(x + w / 2, y + h / 2 + size * 0.35, label, size, primary ? '#04223a' : C.text, { 'text-anchor': 'middle', 'font-weight': primary || active ? 500 : 400 }), w - 12, 11)
+  tap(R(x, y, w, h, 'transparent'), fn)
+}
+// Wraps text into lines that fit maxW; returns the y after the last line
+function wrap (x, y, text, size, fill, maxW, lineH, maxLines) {
+  const words = String(text || '').split(/\s+/).filter(Boolean)
+  let line = ''; let n = 0; let t = T(x, y, '', size, fill)
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w
+    t.textContent = test
+    if (t.getComputedTextLength() > maxW && line) {
+      t.textContent = line
+      n++
+      if (n >= maxLines) { t.textContent = line + ' …'; return y + n * lineH }
+      line = w
+      t = T(x, y + n * lineH, w, size, fill)
+    } else line = test
+  }
+  t.textContent = line
+  return y + (n + 1) * lineH
+}
+function pager (x, y, page, pages, onChange) {
+  if (pages <= 1) return
+  button(x, y, 52, 40, '▲', () => onChange(Math.max(0, page - 1)))
+  T(x + 86, y + 26, `${page + 1}/${pages}`, 15, C.muted, { 'text-anchor': 'middle' })
+  button(x + 120, y, 52, 40, '▼', () => onChange(Math.min(pages - 1, page + 1)))
+}
+const weekdayLabel = iso => { const p = localParts(iso); return `${p.weekday} ${p.day} ${p.month}` }
+function fmtPos (p) {
+  if (!p || typeof p.latitude !== 'number') return '–'
+  const f = (v, a, b) => `${Math.floor(Math.abs(v))}°${(Math.abs(v) % 1 * 60).toFixed(2).padStart(5, '0')}′${v >= 0 ? a : b}`
+  return `${f(p.latitude, 'N', 'S')} ${f(p.longitude, 'E', 'W')}`
+}
+
+// ---------------------------------------------------------------- Weather
+function renderWeather () {
+  const w = state.weather
+  header(`Weather · ${w.place}`, w.forecast.updated ? `Open-Meteo · updated ${clock(w.forecast.updated)}` : (w.forecast.error || ''))
+  const th = thresholdOpts(w.thresholds)
+  const hrs = w.hours
+  panel(20, 66, 1240, 300)
+  T(40, 92, '48 hours · wind and gusts, kn', 16, C.muted)
+  if (!hrs.length) { T(40, 220, 'No forecast yet.', 20, C.muted); nav('weather'); return }
+  const x0 = 60; const cw = 1180 / hrs.length
+  const t0 = Date.parse(hrs[0].time)
+  const xOf = t => x0 + cw * ((Date.parse(t) - t0) / 3600e3) + cw / 2
+  // nights
+  const suns = w.days.map(d => [Date.parse(d.sunrise), Date.parse(d.sunset)])
+  const tEnd = Date.parse(hrs[hrs.length - 1].time) + 3600e3
+  let nightFrom = t0 - 3600e3
+  for (const [rise, set] of suns.concat([[tEnd + 86400e3, tEnd + 86400e3]])) {
+    const a = Math.max(nightFrom, t0 - 1800e3); const b = Math.min(rise, tEnd)
+    if (b > a) R(Math.max(30, xOf(new Date(a).toISOString())), 100, Math.min(1250, xOf(new Date(b).toISOString())) - Math.max(30, xOf(new Date(a).toISOString())), 256, '#000', { opacity: 0.28 })
+    nightFrom = set
+  }
+  gustBars(hrs.map(h => ({ w: h.windKn, g: h.gustKn })), { x0, cw, base: 316, top: 150, bw: cw * 0.62, labelEvery: 3, ...th })
+  hrs.forEach((h, i) => {
+    const cx = x0 + cw * i + cw / 2
+    if (i % 3 === 0) { arrowAt(cx, 132, h.windDir, C.soft, 0.85); T(cx, 340, `${h.hour}h`, 13, C.muted, { 'text-anchor': 'middle' }) }
+    if (h.hour === 0 && i > 0) {
+      el('line', { x1: cx - cw / 2, x2: cx - cw / 2, y1: 100, y2: 350, stroke: C.line, 'stroke-width': 2 })
+      T(cx - cw / 2 + 6, 116, weekdayLabel(h.time), 14, C.soft)
+    }
+  })
+  T(x0, 116, weekdayLabel(hrs[0].time), 14, C.soft)
+
+  // rain and waves
+  panel(20, 376, 820, 180)
+  T(40, 402, 'Rain mm/h', 16, C.muted)
+  T(820, 402, 'waves m', 16, C.amber, { 'text-anchor': 'end' })
+  const bx0 = 60; const bcw = 760 / hrs.length; const by = 532; const btop = 420
+  const RY = v => by - (by - btop) * Math.min(v, 4) / 4
+  const WY = v => by - (by - btop) * Math.min(v, 2.5) / 2.5
+  ;[1, 2, 3].forEach(v => { el('line', { x1: bx0, x2: bx0 + 760, y1: RY(v), y2: RY(v), stroke: C.grid }); T(bx0 - 8, RY(v) + 5, v, 12, C.dim, { 'text-anchor': 'end' }) })
+  hrs.forEach((h, i) => {
+    const x = bx0 + bcw * i
+    if ((h.rainMm || 0) >= 0.1) R(x + 1, RY(h.rainMm), bcw - 2, by - RY(h.rainMm), h.rainMm >= 1 ? C.blue : C.lightBlue, { rx: 1 })
+    if (i % 6 === 0) T(x + bcw / 2, 550, `${h.hour}h`, 12, C.muted, { 'text-anchor': 'middle' })
+  })
+  const wv = hrs.map((h, i) => [bx0 + bcw * i + bcw / 2, h.waveM]).filter(p => typeof p[1] === 'number')
+  if (wv.length > 1) {
+    el('path', { d: P(wv.map(p => [p[0], WY(p[1])])), fill: 'none', stroke: C.amber, 'stroke-width': 2.5 })
+    const top = wv.reduce((a, p) => (p[1] > a[1] ? p : a), wv[0])
+    T(Math.min(top[0], 800), WY(top[1]) - 8, `${top[1]} m`, 13, C.amber, { 'text-anchor': 'middle' })
+  }
+  const totalRain = hrs.reduce((a, h) => a + (h.rainMm || 0), 0)
+  if (totalRain < 0.2) T(440, 480, 'Dry for the next 48 hours', 18, C.green, { 'text-anchor': 'middle' })
+
+  // pressure: measured + forecast
+  panel(20, 566, 820, 176)
+  T(40, 592, 'Pressure hPa · measured (solid) and forecast (dashed)', 16, C.muted)
+  const pm = w.pressure.measured || []; const pf = w.pressure.forecast || []
+  const all = pm.map(p => p.hPa).concat(pf.map(p => p.hPa))
+  if (all.length > 1) {
+    const mn = Math.floor(Math.min(...all) - 1); const mx = Math.ceil(Math.max(...all) + 1)
+    const nowT = Date.parse(w.now); const px0 = 80; const px1 = 820; const py0 = 606; const py1 = 716
+    const PX = t => px0 + (px1 - px0) * (Date.parse(t) - (nowT - 24 * 3600e3)) / (72 * 3600e3)
+    const PY = v => py1 - (py1 - py0) * (v - mn) / (mx - mn)
+    const step = Math.max(2, Math.round((mx - mn) / 3))
+    for (let v = mn; v <= mx; v += step) { el('line', { x1: px0, x2: px1, y1: PY(v), y2: PY(v), stroke: C.grid }); T(px0 - 8, PY(v) + 5, v, 12, C.dim, { 'text-anchor': 'end' }) }
+    if (pm.length > 1) el('path', { d: P(pm.map(p => [PX(p.t), PY(p.hPa)])), fill: 'none', stroke: C.blue, 'stroke-width': 3.5 })
+    if (pf.length > 1) el('path', { d: P(pf.map(p => [PX(p.t), PY(p.hPa)])), fill: 'none', stroke: C.blue, 'stroke-width': 2.5, 'stroke-dasharray': '7 5' })
+    const nx = PX(w.now)
+    el('line', { x1: nx, x2: nx, y1: py0, y2: py1, stroke: C.text, 'stroke-dasharray': '4 4' })
+    T(nx + 5, py0 + 10, 'now', 12, C.text)
+    const low = w.pressure.low
+    if (low && low.hPa < (pf[0] ? pf[0].hPa : 9999) - 1) T(PX(low.t), PY(low.hPa) + 18, `low ${Math.round(low.hPa)} · ${localParts(low.t).weekday} ${hh(low.t)}`, 13, C.redText, { 'text-anchor': 'middle' })
+    ;[[-24, '−24h'], [0, ''], [24, '+24h'], [48, '+48h']].forEach(([h, l]) => { if (l) T(px0 + (px1 - px0) * (h + 24) / 72, 734, l, 12, C.muted, { 'text-anchor': h === 48 ? 'end' : 'middle' }) })
+  }
+
+  // next days
+  panel(856, 376, 404, 366)
+  T(876, 404, 'Next days', 18, C.text, { 'font-weight': 500 })
+  w.days.forEach((d, i) => {
+    const y = 420 + i * 106
+    if (i) el('line', { x1: 876, x2: 1240, y1: y, y2: y, stroke: C.line })
+    el('circle', { cx: 884, cy: y + 30, r: 7, fill: levelFill(d.level === 'green' ? 'green' : d.level) })
+    T(900, y + 36, d.label, 20, C.text, { 'font-weight': 500 })
+    arrowAt(1226, y + 30, d.windDir, C.soft, 1.1)
+    const bft = d.bft.min === d.bft.max ? `${d.bft.min}` : `${d.bft.min}–${d.bft.max}`
+    fit(T(900, y + 62, `${d.windFrom} ${bft} Bft · ${d.windKn.min}–${d.windKn.max} kn · gusts ${d.gustMaxKn}`, 16, C.soft), 330, 12)
+    const rain = d.rainMm >= 0.2 ? `rain ${d.rainMm} mm` : 'dry'
+    fit(T(900, y + 86, `${rain}${d.waveMaxM !== null ? ` · waves ${d.waveMaxM} m` : ''} · ☀ ${clock(d.sunrise)}–${clock(d.sunset)}`, 15, C.muted), 340, 11)
+  })
+  nav('weather')
+}
+
+// ---------------------------------------------------------------- Battery
+function renderBattery () {
+  const b = state.battery
+  header('Battery · house bank', b.live ? `SmartShunt · ${clock(b.now)}` : 'no live data')
+  panel(20, 66, 840, 350)
+  T(40, 92, 'State of charge · 7 days', 16, C.muted)
+  const s = b.series || []
+  const x0 = 80; const x1 = 840; const y0 = 110; const y1 = 370
+  const nowT = Date.parse(b.now); const t0 = nowT - 7 * 86400e3
+  const X = t => x0 + (x1 - x0) * (Date.parse(t) - t0) / (nowT - t0)
+  const Y = v => y1 - (y1 - y0) * v / 100
+  ;[25, 50, 75, 100].forEach(v => { el('line', { x1: x0, x2: x1, y1: Y(v), y2: Y(v), stroke: v === 50 ? C.red : C.grid, 'stroke-dasharray': v === 50 ? '8 6' : null, opacity: v === 50 ? 0.7 : 1 }); T(x0 - 8, Y(v) + 5, `${v}%`, 13, v === 50 ? C.redText : C.dim, { 'text-anchor': 'end' }) })
+  if (s.length > 1) {
+    el('path', { d: P(s.map(p => [X(p.t), Y(p.soc)])) + `L${X(s[s.length - 1].t)} ${y1}L${X(s[0].t)} ${y1}Z`, fill: C.green, 'fill-opacity': 0.12 })
+    el('path', { d: P(s.map(p => [X(p.t), Y(p.soc)])), fill: 'none', stroke: C.green, 'stroke-width': 3, 'stroke-linejoin': 'round' })
+  } else T(460, 250, 'The curve fills while Sailpartner runs.', 18, C.muted, { 'text-anchor': 'middle' })
+  b.days.forEach((d, i) => T(x0 + (x1 - x0) * (i + 0.5) / 7, 396, d.label, 14, C.muted, { 'text-anchor': 'middle' }))
+
+  panel(20, 426, 840, 316)
+  T(40, 452, 'Charged and used per day · Ah', 16, C.muted)
+  T(840, 452, 'green charged · red used', 14, C.muted, { 'text-anchor': 'end' })
+  const vals = b.days.flatMap(d => [d.chargedAh || 0, d.usedAh || 0])
+  const mx = Math.max(20, ...vals)
+  const base = 590; const hMax = 110
+  el('line', { x1: 60, x2: 840, y1: base, y2: base, stroke: C.dim })
+  b.days.forEach((d, i) => {
+    const cx = 60 + 780 * (i + 0.5) / 7
+    if (d.chargedAh !== null) {
+      const hc = hMax * d.chargedAh / mx; const hu = hMax * d.usedAh / mx
+      R(cx - 30, base - hc, 26, hc, C.green, { rx: 3 })
+      R(cx + 4, base, 26, hu, C.red, { rx: 3 })
+      T(cx - 17, base - hc - 6, d.chargedAh, 13, C.greenText, { 'text-anchor': 'middle' })
+      T(cx + 17, base + hu + 16, d.usedAh, 13, C.redText, { 'text-anchor': 'middle' })
+    } else T(cx, base - 8, '–', 14, C.dim, { 'text-anchor': 'middle' })
+    T(cx, 732, d.label, 14, C.muted, { 'text-anchor': 'middle' })
+  })
+
+  panel(876, 66, 384, 676)
+  const lv = b.live
+  const soc = lv && typeof lv.soc === 'number' ? lv.soc : null
+  const r = 80; const circ = 2 * Math.PI * r
+  el('circle', { cx: 1068, cy: 200, r, fill: 'none', stroke: C.line, 'stroke-width': 20 })
+  if (soc !== null) el('circle', { cx: 1068, cy: 200, r, fill: 'none', stroke: soc < 50 ? C.red : soc < 65 ? C.amber : C.green, 'stroke-width': 20, 'stroke-linecap': 'round', 'stroke-dasharray': `${circ * soc / 100} ${circ}`, transform: 'rotate(-90 1068 200)' })
+  T(1068, 214, soc === null ? '–' : `${soc}%`, 42, C.text, { 'text-anchor': 'middle', 'font-weight': 500 })
+  const left = lv && typeof lv.timeRemainingS === 'number' ? (() => { const h = Math.floor(lv.timeRemainingS / 3600); return h >= 24 ? `${Math.floor(h / 24)}d ${h % 24}h` : `${h}h` })() : '–'
+  const rows = [
+    ['Voltage', lv ? `${fmtNum(lv.voltage, 2)} V` : '–', C.text],
+    ['Current', lv ? `${fmtNum(lv.current)} A` : '–', lv && (lv.current || 0) < 0 ? C.redBright : C.green],
+    ['Power', lv && typeof lv.power === 'number' ? `${lv.power} W` : '–', C.text],
+    ['Used since full', lv && typeof lv.consumedAh === 'number' ? `${lv.consumedAh} Ah` : '–', C.text],
+    ['Time to go', left, C.text],
+    ['Lowest this week', b.lowest ? `${b.lowest.soc} % · ${b.lowest.day}` : '–', b.lowest && b.lowest.soc < 50 ? C.amberText : C.text],
+    ['Last full charge', b.lastFull ? `${weekdayLabel(b.lastFull)} ${clock(b.lastFull)}` : '–', C.text]
+  ]
+  rows.forEach(([l, v, col], i) => {
+    const y = 336 + i * 44
+    T(896, y, l, 17, C.muted)
+    fit(T(1240, y, v, 21, col, { 'text-anchor': 'end', 'font-weight': 500 }), 200, 14)
+    el('line', { x1: 896, x2: 1240, y1: y + 14, y2: y + 14, stroke: C.line })
+  })
+  if (b.advice) wrap(896, 668, b.advice.text, 17, b.advice.level === 'amber' ? C.amberText : C.greenText, 344, 22, 3)
+  else if (!lv) wrap(896, 668, 'No live battery data — check signalk-victron-ble (SmartShunt).', 17, C.muted, 344, 22, 3)
+  nav('battery')
+}
+
+// ---------------------------------------------------------------- Logbook
+const QUICK = ['Cast off', 'Reefed', 'Unreefed', 'Tacked', 'Gybed', 'Engine on', 'Engine off', 'Moored', 'Anchored', 'Note…']
+function renderLogbook () {
+  const lb = state.logbook
+  const ui = state.ui
+  header('Logbook')
+  const isToday = lb.day === lb.today
+  const idx = lb.days.indexOf(lb.day)
+  if (idx > 0) button(700, 16, 52, 40, '◀', () => logGo(lb.days[idx - 1]))
+  T(870, 44, isToday ? `Today · ${weekdayLabel(lb.day + 'T12:00:00Z')}` : weekdayLabel(lb.day + 'T12:00:00Z'), 20, C.text, { 'text-anchor': 'middle', 'font-weight': 500 })
+  if (idx < lb.days.length - 1) button(988, 16, 52, 40, '▶', () => logGo(lb.days[idx + 1]))
+  if (!isToday) button(1050, 16, 90, 40, 'Today', () => logGo(lb.today))
+  button(1150, 16, 110, 40, 'Export CSV', () => window.open(`${API}/logbook/export?day=${lb.day}`, '_blank'))
+
+  panel(20, 66, 840, 676)
+  const cols = [[36, 'Time'], [104, 'Position'], [330, 'COG'], [392, 'SOG'], [452, 'Wind'], [552, 'Baro'], [628, 'Entry']]
+  cols.forEach(([x, l]) => T(x, 98, l, 15, C.muted))
+  el('line', { x1: 36, x2: 844, y1: 108, y2: 108, stroke: C.line })
+  const per = 14
+  const pages = Math.max(1, Math.ceil(lb.entries.length / per))
+  ui.logPage = Math.min(ui.logPage, pages - 1)
+  const rows = lb.entries.slice(ui.logPage * per, ui.logPage * per + per)
+  if (!rows.length) T(40, 160, isToday ? 'No entries yet today. Entries are written automatically when you leave and reach a berth, and every hour under way.' : 'No entries on this day.', 17, C.muted)
+  rows.forEach((e, i) => {
+    const y = 134 + i * 36
+    const own = e.kind !== 'auto'
+    const sel = ui.logSel === e.t
+    if (own || sel) R(28, y - 23, 824, 32, sel ? '#16304a' : '#1a2c40', { rx: 6 })
+    const v = [clock(e.t), fmtPos(e.position), e.cog === null ? '–' : `${e.cog}°`, e.sog === null ? '–' : fmtNum(e.sog), e.tws === null ? '–' : `${compass(e.twd)} ${Math.round(e.tws)}`, e.pressure === null ? '–' : Math.round(e.pressure)]
+    v.forEach((t, j) => fit(T(cols[j][0], y, t, 15, C.soft), (cols[j + 1] ? cols[j + 1][0] : 860) - cols[j][0] - 8, 11))
+    fit(T(628, y, e.text || (e.kind === 'auto' ? 'hourly' : ''), 16, own ? C.text : C.dim, { 'font-weight': own ? 500 : 400 }), sel && e.kind === 'manual' ? 130 : 210, 12)
+    if (e.kind === 'manual') tap(R(28, y - 23, 824, 32, 'transparent'), () => { ui.logSel = sel ? null : e.t; render() })
+    if (sel && e.kind === 'manual') button(764, y - 21, 80, 28, 'Delete', () => deleteEntry(lb.day, e.t), { size: 14 })
+  })
+  pager(668, 604, ui.logPage, pages, p => { ui.logPage = p; render() })
+  if (isToday) {
+    QUICK.forEach((q, i) => button(32 + i * 82, 660, 78, 64, q, () => (q === 'Note…' ? openNote() : addEntry(q)), { size: 15 }))
+  } else {
+    T(40, 700, 'New entries can only be added for today.', 16, C.muted)
+  }
+
+  panel(876, 66, 384, 330)
+  T(896, 100, isToday ? 'Today' : 'This day', 20, C.text, { 'font-weight': 500 })
+  const st = lb.stats || {}
+  ;[['Distance', typeof st.distanceNm === 'number' ? `${fmtNum(st.distanceNm)} nm` : '–'], ['Under way', typeof st.underwayH === 'number' ? durationText(st.underwayH) : '–'], ['Max speed', typeof st.maxSog === 'number' ? `${fmtNum(st.maxSog)} kn` : '–'], ['Entries', String(lb.entries.length)]].forEach(([l, v], i) => {
+    const y = 150 + i * 56
+    T(896, y, l, 17, C.muted)
+    T(1240, y, v, 24, C.text, { 'text-anchor': 'end', 'font-weight': 500 })
+    el('line', { x1: 896, x2: 1240, y1: y + 18, y2: y + 18, stroke: C.line })
+  })
+
+  panel(876, 406, 384, 336)
+  const se = lb.season
+  T(896, 440, `Season ${se.year}`, 20, C.text, { 'font-weight': 500 })
+  ;[['Distance', `${fmtNum(se.distanceNm, 0)} nm`], ['Days under way', String(se.daysUnderway)], ['Days with the system on', String(se.daysAboard)], ['Hours under way', fmtNum(se.underwayH, 0)], ['Longest day', se.longest ? `${fmtNum(se.longest.distanceNm)} nm · ${weekdayLabel(se.longest.day + 'T12:00:00Z')}` : '–']].forEach(([l, v], i) => {
+    const y = 488 + i * 50
+    T(896, y, l, 17, C.muted)
+    fit(T(1240, y, v, 20, C.text, { 'text-anchor': 'end', 'font-weight': 500 }), 180, 13)
+    el('line', { x1: 896, x2: 1240, y1: y + 16, y2: y + 16, stroke: C.line })
+  })
+  nav('logbook')
+}
+
+function logGo (day) {
+  if (!day) return
+  state.ui.logDay = day
+  state.ui.logPage = 0
+  state.ui.logSel = null
+  loadOne('logbook', `${API}/logbook?day=${day}`).then(render)
+}
+async function addEntry (text) {
+  try {
+    state.logbook = await getJson(`${API}/logbook`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })
+    const pages = Math.ceil(state.logbook.entries.length / 14)
+    state.ui.logPage = Math.max(0, pages - 1)
+    toast(`Logged: ${text}`)
+    render()
+    return true
+  } catch (e) { toast(`Could not save: ${e.message}`); return false }
+}
+async function deleteEntry (day, t) {
+  try {
+    state.logbook = await getJson(`${API}/logbook?day=${day}&t=${encodeURIComponent(t)}`, { method: 'DELETE' })
+    state.ui.logSel = null
+    render()
+  } catch (e) { toast(`Could not delete: ${e.message}`) }
+}
+const noteOpen = () => !document.getElementById('note').hidden
+function openNote () {
+  const inp = document.getElementById('note-text')
+  inp.value = ''
+  document.getElementById('note-error').hidden = true
+  document.getElementById('note').hidden = false
+  setTimeout(() => inp.focus(), 50)
+}
+document.getElementById('note-cancel').addEventListener('click', () => { document.getElementById('note').hidden = true })
+async function saveNote () {
+  const text = document.getElementById('note-text').value.trim()
+  if (!text) { const e = document.getElementById('note-error'); e.textContent = 'Write something first.'; e.hidden = false; return }
+  if (await addEntry(text)) document.getElementById('note').hidden = true
+}
+document.getElementById('note-save').addEventListener('click', saveNote)
+document.getElementById('note-text').addEventListener('input', () => { document.getElementById('note-error').hidden = true })
+document.getElementById('note-text').addEventListener('keydown', e => { if (e.key === 'Enter') saveNote() })
+
+// ---------------------------------------------------------------- Warnings
+const WARN_FILTERS = [['near', 'Near me'], ['route', 'On route'], ['all', 'All Baltic']]
+function warnFilterFn (f) {
+  if (f === 'route') return w => w.relevance === 'route' || w.relevance === 'here'
+  if (f === 'all') return () => true
+  return w => w.relevance === 'here' || w.relevance === 'nearby'
+}
+function whereText (w) {
+  if (w.onboard) return 'on board'
+  if (w.areaOnly && w.distanceNm === 0) return 'your sea area'
+  if (w.relevance === 'here') return 'here'
+  if (w.relevance === 'route' && typeof w.routeDistanceNm === 'number') return `${w.routeDistanceNm} nm from route`
+  if (typeof w.distanceNm === 'number') return `${Math.round(w.distanceNm)} nm away`
+  return (w.areas || []).join(', ').toLowerCase()
+}
+function renderWarnings () {
+  const ui = state.ui
+  header('Warnings')
+  if (!state.warnings) {
+    T(40, 140, 'The warnings plugin is not reachable.', 22, C.muted)
+    T(40, 176, 'Install and enable "Baltic Warnings" (signalk-baltic-warnings) in Signal K.', 18, C.muted)
+    nav('warnings'); return
+  }
+  const rank = { emergency: 4, alarm: 4, warn: 3, alert: 2 }
+  const relRank = { here: 4, route: 3, nearby: 2, far: 1, unknown: 0 }
+  WARN_FILTERS.forEach(([k, l], i) => {
+    const n = state.warnings.filter(warnFilterFn(k)).length
+    button(250 + i * 170, 16, 160, 40, `${l} · ${n}`, () => { ui.warnFilter = k; ui.warnPage = 0; ui.warnSel = null; render() }, { active: ui.warnFilter === k })
+  })
+  button(1130, 16, 130, 40, 'Refresh', refreshWarnings)
+  const list = state.warnings.filter(warnFilterFn(ui.warnFilter))
+    .sort((a, b) => (rank[b.severity] || 0) - (rank[a.severity] || 0) || (relRank[b.relevance] || 0) - (relRank[a.relevance] || 0) || (a.distanceNm ?? 1e9) - (b.distanceNm ?? 1e9))
+  if (!ui.warnSel || !list.some(w => w.id === ui.warnSel)) ui.warnSel = list[0] ? list[0].id : null
+
+  panel(20, 66, 760, 676)
+  const per = 8
+  const pages = Math.max(1, Math.ceil(list.length / per))
+  ui.warnPage = Math.min(ui.warnPage, pages - 1)
+  if (!list.length) T(40, 120, ui.warnFilter === 'route' ? 'Nothing on your route (or no route planned in Passage).' : 'No warnings here.', 19, C.green)
+  list.slice(ui.warnPage * per, ui.warnPage * per + per).forEach((w, i) => {
+    const y = 78 + i * 76
+    const sel = w.id === ui.warnSel
+    R(32, y, 736, 68, sel ? '#16304a' : C.panel2, { rx: 8 })
+    R(32, y, 8, 68, warningColor(w, true))
+    fit(T(56, y + 28, smartCase(w.title), 19, C.text, { 'font-weight': 500 }), 690, 14)
+    const until = w.validTo ? ` · until ${weekdayLabel(w.validTo)} ${clock(w.validTo)}` : ''
+    fit(T(56, y + 54, `${w.label} · ${whereText(w)}${until}`, 15, C.muted), 690, 12)
+    tap(R(32, y, 736, 68, 'transparent'), () => { ui.warnSel = w.id; render() })
+  })
+  pager(590, 694, ui.warnPage, pages, p => { ui.warnPage = p; render() })
+
+  panel(796, 66, 464, 456)
+  const w = list.find(x => x.id === ui.warnSel)
+  if (w) {
+    fit(T(816, 100, w.label, 19, warningColor(w, true), { 'font-weight': 500 }), 424, 13)
+    const meta = [w.issued ? `issued ${weekdayLabel(w.issued)} ${clock(w.issued)}` : null, w.validTo ? `valid until ${weekdayLabel(w.validTo)} ${clock(w.validTo)}` : null].filter(Boolean).join(' · ')
+    fit(T(816, 126, meta || 'no end time given', 15, C.muted), 424, 12)
+    fit(T(816, 150, `${whereText(w)}${(w.areas || []).length ? ' · ' + w.areas.join(', ').toLowerCase() : ''}`, 15, C.muted), 424, 12)
+    let y = 186
+    for (const para of String(w.text || '').split('\n')) {
+      y = wrap(816, y, para, 16, C.soft, 424, 21, Math.max(1, Math.floor((506 - y) / 21)))
+      if (y > 500) break
+    }
+    fit(T(816, 512, `Source: ${(w.sources || []).join(', ')}${w.attribution ? ' · ' + w.attribution : ''}`, 13, C.dim), 424, 11)
+  }
+
+  panel(796, 532, 464, 210)
+  T(816, 562, 'Sources', 18, C.text, { 'font-weight': 500 })
+  ;(state.sources || []).slice(0, 6).forEach((s, i) => {
+    const y = 592 + i * 25
+    const col = !s.enabled ? C.dim : s.lastError ? C.amber : s.lastSuccess ? C.green : C.dim
+    el('circle', { cx: 824, cy: y - 5, r: 5, fill: col })
+    fit(T(838, y, s.name.replace(/ \(.*\)$/, ''), 15, s.enabled ? C.soft : C.dim), 250, 11)
+    const st = !s.enabled ? 'off' : s.probeOnly ? 'probe only' : s.lastError ? `failed ${clock(s.lastError.at)}` : s.lastSuccess ? `OK ${clock(s.lastSuccess)} · ${s.count}` : 'waiting'
+    T(1240, y, st, 14, s.lastError ? C.amber : C.muted, { 'text-anchor': 'end' })
+  })
+  nav('warnings')
+}
+async function refreshWarnings () {
+  toast('Fetching warnings…')
+  try { await getJson(`${WARN_API}/refresh`, { method: 'POST' }) } catch (e) { toast(`Refresh failed: ${e.message}`) }
+  await loadWarnings()
+  render()
+}
+
+// ---------------------------------------------------------------- NMEA
+const NMEA_FILTERS = ['All', 'Navigation', 'Environment', 'Electrical', 'Other']
+function nmeaGroup (path) {
+  const top = path.split('.')[0]
+  return top === 'navigation' ? 'Navigation' : top === 'environment' ? 'Environment' : top === 'electrical' ? 'Electrical' : 'Other'
+}
+function fmtValue (path, v) {
+  if (v === null || v === undefined) return '–'
+  if (typeof v === 'object' && typeof v.latitude === 'number') return fmtPos(v)
+  if (typeof v === 'object') return v.state ? `${v.state}: ${v.message || ''}` : JSON.stringify(v)
+  if (typeof v !== 'number') return String(v)
+  const p = path
+  if (/rateOfTurn/i.test(p)) return `${(v * 180 / Math.PI * 60).toFixed(0)} °/min`
+  if (/(angle|heading|courseOverGround|direction|magneticVariation|attitude|rudder|bearing|cog)/i.test(p) && !/speed/i.test(p)) return `${(v * 180 / Math.PI).toFixed(0)}°`
+  if (/(speed|velocity|sog|stw)/i.test(p)) return `${(v * 1.943844).toFixed(1)} kn`
+  if (/temperature/i.test(p)) return `${(v - 273.15).toFixed(1)} °C`
+  if (/pressure/i.test(p)) return v > 2000 ? `${(v / 100).toFixed(1)} hPa` : `${v}`
+  if (/(stateOfCharge|relativeHumidity|ratio|currentLevel|stateOfHealth)/i.test(p)) return `${Math.round(v * 100)} %`
+  if (/voltage/i.test(p)) return `${v.toFixed(2)} V`
+  if (/current/i.test(p)) return `${v.toFixed(1)} A`
+  if (/power/i.test(p)) return `${Math.round(v)} W`
+  if (/(depth|belowTransducer|belowKeel|belowSurface|surfaceToTransducer)/i.test(p)) return `${v.toFixed(1)} m`
+  if (/(log|trip|distance)/i.test(p)) return `${(v / 1852).toFixed(1)} nm`
+  if (/consumedCharge|dischargeSinceFull/i.test(p)) return `${(v / 3600).toFixed(1)} Ah`
+  if (/timeRemaining/i.test(p)) return `${(v / 3600).toFixed(1)} h`
+  return Number.isInteger(v) ? String(v) : v.toFixed(3).replace(/0+$/, '').replace(/\.$/, '')
+}
+function ageText (ms) {
+  if (ms < 1500) return 'now'
+  if (ms < 60e3) return `${Math.round(ms / 1000)} s`
+  if (ms < 3600e3) return `${Math.round(ms / 60e3)} min`
+  return `${Math.round(ms / 3600e3)} h`
+}
+function renderNmea () {
+  const d = state.data
+  const ui = state.ui
+  header('NMEA', `${fmtNum(d.updatesPerSec)} updates/s`)
+  NMEA_FILTERS.forEach((f, i) => {
+    const n = f === 'All' ? d.paths.length : d.paths.filter(r => nmeaGroup(r.path) === f).length
+    button(170 + i * 150, 16, 140, 40, `${f} · ${n}`, () => { ui.nmeaFilter = f; ui.nmeaPage = 0; render() }, { active: ui.nmeaFilter === f, size: 15 })
+  })
+  const rows = d.paths.filter(r => ui.nmeaFilter === 'All' || nmeaGroup(r.path) === ui.nmeaFilter)
+
+  panel(20, 66, 820, 676)
+  const cx = [[36, 'Path'], [356, 'Value'], [530, 'From'], [770, 'Age'], [826, '/min']]
+  cx.forEach(([x, l], i) => T(x, 96, l, 15, C.muted, { 'text-anchor': i >= 3 ? 'end' : 'start' }))
+  el('line', { x1: 36, x2: 826, y1: 106, y2: 106, stroke: C.line })
+  const per = 21
+  const pages = Math.max(1, Math.ceil(rows.length / per))
+  ui.nmeaPage = Math.min(ui.nmeaPage, pages - 1)
+  if (!rows.length) {
+    T(40, 150, 'No data received yet.', 20, C.muted)
+    T(40, 180, 'Check Server → Data Connections in Signal K (CAN bus, NMEA 0183, plugins).', 17, C.muted)
+  }
+  rows.slice(ui.nmeaPage * per, ui.nmeaPage * per + per).forEach((r, i) => {
+    const y = 130 + i * 27
+    if (i % 2) R(28, y - 18, 804, 26, C.panel2, { rx: 4 })
+    fit(T(36, y, r.path, 14, C.soft, { 'font-family': 'ui-monospace, Menlo, Consolas, monospace' }), 312, 10)
+    fit(T(356, y, fmtValue(r.path, r.value), 15, C.text, { 'font-weight': 500 }), 166, 11)
+    const src = r.source.code ? `${r.source.code}${r.source.name ? ' ' + r.source.name : ''}` : r.source.label
+    fit(T(530, y, src, 14, r.source.type === 'NMEA 2000' ? C.lightBlue : r.source.type === 'NMEA 0183' ? C.amberText : C.muted), 196, 10)
+    T(770, y, ageText(r.ageMs), 14, r.ageMs < 5000 ? C.green : r.ageMs < 60e3 ? C.soft : C.amber, { 'text-anchor': 'end' })
+    T(826, y, r.perMin >= 100 ? Math.round(r.perMin) : fmtNum(r.perMin), 14, C.muted, { 'text-anchor': 'end' })
+  })
+  pager(652, 694, ui.nmeaPage, pages, p => { ui.nmeaPage = p; render() })
+  T(40, 720, 'Blue: NMEA 2000 (PGN) · yellow: NMEA 0183 (sentence) · grey: plugins and sensors', 14, C.dim)
+
+  panel(856, 66, 404, 430)
+  T(876, 96, 'Live feed', 18, C.text, { 'font-weight': 500 })
+  d.log.slice(-15).reverse().forEach((l, i) => {
+    const y = 124 + i * 24
+    const t = localParts(l.t)
+    T(876, y, `${t.hour}:${t.minute}:${String(new Date(l.t).getSeconds()).padStart(2, '0')}`, 13, C.dim, { 'font-family': 'ui-monospace, Menlo, Consolas, monospace' })
+    fit(T(950, y, l.source.code || l.source.label, 13, l.source.type === 'NMEA 2000' ? C.lightBlue : l.source.type === 'NMEA 0183' ? C.amberText : C.muted), 82, 9)
+    fit(T(1038, y, `${l.path.split('.').slice(-2).join('.')} = ${fmtValue(l.path, l.value)}`, 13, C.soft), 206, 9)
+  })
+
+  panel(856, 506, 404, 236)
+  T(876, 536, 'Sources', 18, C.text, { 'font-weight': 500 })
+  d.sources.slice(0, 7).forEach((s, i) => {
+    const y = 566 + i * 25
+    el('circle', { cx: 882, cy: y - 5, r: 5, fill: s.ageMs < 10e3 ? C.green : s.ageMs < 120e3 ? C.amber : C.dim })
+    fit(T(896, y, s.name, 15, C.soft), 200, 10)
+    T(1130, y, s.type, 13, C.muted, { 'text-anchor': 'end' })
+    T(1240, y, `${s.count}`, 14, C.muted, { 'text-anchor': 'end' })
+  })
+  if (!d.sources.length) T(876, 570, 'Nothing yet.', 16, C.muted)
+  nav('nmea')
+}
+
 // ---------------------------------------------------------------- render, data
 function render () {
   while (svg.firstChild) svg.removeChild(svg.firstChild)
   root = svg
   R(0, 0, 1280, 800, C.bg)
-  const ready = state.page === 'passage' ? state.passage : state.brief
-  if (!ready) { T(640, 400, 'Loading…', 28, C.muted, { 'text-anchor': 'middle' }); return }
-  if (state.page === 'passage') renderPassage()
-  else if (state.page === 'instruments') renderInstruments()
-  else renderBrief()
+  const need = { passage: state.passage, weather: state.weather, battery: state.battery, logbook: state.logbook, nmea: state.data, warnings: true }
+  const ready = state.page in need ? need[state.page] : state.brief
+  if (!ready) { T(640, 400, 'Loading…', 28, C.muted, { 'text-anchor': 'middle' }); nav(state.page); return }
+  const pages = { passage: renderPassage, instruments: renderInstruments, weather: renderWeather, warnings: renderWarnings, battery: renderBattery, logbook: renderLogbook, nmea: renderNmea }
+  ;(pages[state.page] || renderBrief)()
 }
 
 async function getJson (url, opts) {
@@ -691,8 +1175,19 @@ async function loadWarnings () {
   } catch (e) { state.warnings = null; state.sources = null }
 }
 
+async function loadOne (key, url) {
+  try { state[key] = await getJson(url); if (state[key].timezone) state.tz = state[key].timezone } catch (e) { toast(`Could not load ${key}: ${e.message}`) }
+}
+
 async function load () {
-  if (state.page === 'passage') await Promise.all([loadPassage(), loadWarnings(), state.brief ? null : loadBrief()])
+  const p = state.page
+  const brief = state.brief ? null : loadBrief()
+  if (p === 'passage') await Promise.all([loadPassage(), loadWarnings(), brief])
+  else if (p === 'weather') await Promise.all([loadOne('weather', `${API}/weather`), brief])
+  else if (p === 'battery') await Promise.all([loadOne('battery', `${API}/battery`), brief])
+  else if (p === 'logbook') await Promise.all([loadOne('logbook', `${API}/logbook${state.ui.logDay ? `?day=${state.ui.logDay}` : ''}`), brief])
+  else if (p === 'nmea') await Promise.all([loadOne('data', `${API}/data`), brief])
+  else if (p === 'warnings') await Promise.all([loadWarnings(), brief])
   else await Promise.all([loadBrief(), loadWarnings()])
   if (!map.drag) render()
 }
@@ -786,9 +1281,13 @@ window.addEventListener('hashchange', () => { const p = location.hash.slice(1); 
 
 render()
 load()
+// NMEA every second; live pages every 30 s; passage and weather every 5 minutes
 let ticks = 0
 setInterval(() => {
   ticks++
-  // live pages every 30 s; the passage (forecast along the route) every 5 minutes
-  if (state.page !== 'passage' || ticks % 10 === 0) load()
-}, 30000)
+  const p = state.page
+  if (p === 'nmea') { if (!noteOpen()) load(); return }
+  if (ticks % 30 !== 0) return
+  if (p === 'passage' || p === 'weather') { if (ticks % 300 === 0) load(); return }
+  if (!noteOpen()) load()
+}, 1000)
