@@ -1,6 +1,6 @@
 {
   "name": "sailwarnings",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "description": "Collects navigational warnings for the Baltic (BALTICO/NAVTEX, Digitraffic, on-board barometer), filters them by own position and planned route, and publishes them as Signal K notifications, chart regions/notes and a REST API.",
   "main": "index.js",
   "bin": {

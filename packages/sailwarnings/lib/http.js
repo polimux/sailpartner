@@ -35,13 +35,15 @@ function causeCode (e) {
   return c && (c.code || (c.errors && c.errors[0] && c.errors[0].code))
 }
 
-async function fetchText (url, { timeoutMs = 20000, headers = {} } = {}) {
+async function fetchText (url, { timeoutMs = 20000, headers = {}, method = 'GET', body: reqBody = null } = {}) {
   let res
   try {
     res = await fetch(url, {
-      headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'en,de;q=0.8', ...headers },
+      headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'en,de;q=0.8', ...(reqBody !== null ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}), ...headers },
       signal: AbortSignal.timeout(timeoutMs),
-      redirect: 'follow'
+      redirect: 'follow',
+      method,
+      ...(reqBody !== null ? { body: reqBody } : {})
     })
   } catch (e) {
     // server sent an incomplete certificate chain: fetch the missing piece like a browser does

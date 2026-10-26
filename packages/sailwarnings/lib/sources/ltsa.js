@@ -1,32 +1,61 @@
 'use strict'
 
 // Lithuanian navigational warnings (LTSA, hydro.eltsa.lt/nw). The page is an
-// ArcGIS map application: the warnings come from an ArcGIS service whose
-// address sits in the app's JavaScript. It is found there once, then queried
-// as GeoJSON. Lithuania's coastal NAVTEX warnings also arrive through BALTICO.
+// ArcGIS map application backed by the feature service
+// .../arcgis/rest/services/Hosted/MaritimeWarnings_LT/FeatureServer.
+// Its point, line and polygon layers carry only shapes and a "warn_globalid";
+// the warning texts sit in a table of the same service, joined by that id.
+// The service address is read from the app script, so a move is picked up.
+// Lithuania's coastal NAVTEX warnings also arrive through BALTICO.
 
-const { featuresToWarnings } = require('./discover')
+const { featureToWarning } = require('./discover')
+const { geometryFromGeoJson } = require('../geojson')
 
 const PAGE = 'https://hydro.eltsa.lt/nw/en.html'
 const SERVICE = /https?:\/\/[^"'\s\\)]+?\/(?:FeatureServer|MapServer)(?:\/\d+)?/g
+const NOT_DATA = /arcgisonline\.com|js\.arcgis\.com|basemaps|World_|Canvas|Ocean_Base|SampleWorldCities|\/exts\//i
 
-let layers = null
+let services = null
 
 function scriptUrls (html, base) {
   return [...html.matchAll(/<script[^>]+src=["']([^"']+)["']/gi)].map(m => new URL(m[1], base).href)
 }
 
-// basemaps and the ArcGIS library itself are not where warnings live
-const NOT_DATA = /services\.arcgisonline\.com|server\.arcgisonline\.com|js\.arcgis\.com|basemaps|World_|Canvas|Ocean_Base/i
-
 function serviceUrls (js) {
-  return [...new Set((js.match(SERVICE) || []).map(u => u.replace(/\/$/, '')))].filter(u => !NOT_DATA.test(u))
+  const all = [...new Set((js.match(SERVICE) || []).map(u => u.replace(/\/\d+$/, '').replace(/\/$/, '')))].filter(u => !NOT_DATA.test(u))
+  const warn = all.filter(u => /warn/i.test(u))
+  return warn.length ? warn : all
 }
 
-// relative config files the app may load ("config.json", "data/layers.json")
 function configUrls (js, base) {
   const rel = [...js.matchAll(/["']((?:\.\/|\/)?[\w./-]+\.json)["']/g)].map(m => m[1]).filter(u => !/package|manifest|nls|i18n/i.test(u))
   return [...new Set(rel)].slice(0, 10).map(u => new URL(u, base).href)
+}
+
+const gid = v => String(v || '').replace(/[{}]/g, '').toUpperCase()
+
+// table rows (attributes) + shapes (GeoJSON features with warn_globalid) -> warnings
+function join (rows, shapes, { now = new Date() } = {}) {
+  const byWarn = new Map()
+  for (const f of shapes) {
+    const k = gid(f.properties && (f.properties.warn_globalid || f.properties.WARN_GLOBALID))
+    if (!k) continue
+    if (!byWarn.has(k)) byWarn.set(k, [])
+    byWarn.get(k).push(f)
+  }
+  const out = []
+  for (const attrs of rows) {
+    const w = featureToWarning({ properties: attrs }, { issuer: 'LITHUANIAN', prefix: 'lithuanian-local', url: PAGE, now })
+    const geo = { positions: [] }
+    for (const f of byWarn.get(gid(attrs.globalid || attrs.GLOBALID)) || []) {
+      const g = geometryFromGeoJson(f.geometry)
+      geo.positions.push(...g.positions)
+      if (g.polygon && !geo.polygon) geo.polygon = g.polygon
+    }
+    if (geo.positions.length || geo.polygon) w.geometry = geo
+    if (w.text) out.push(w)
+  }
+  return out
 }
 
 async function discover (http, raw) {
@@ -39,25 +68,12 @@ async function discover (http, raw) {
     found.push(...serviceUrls(js))
     if (!found.length) {
       for (const cfg of configUrls(js, src)) {
-        try {
-          const body = await http.fetchText(cfg)
-          raw.push({ url: cfg, body })
-          found.push(...serviceUrls(body))
-        } catch (e) { /* not there */ }
+        try { const body = await http.fetchText(cfg); raw.push({ url: cfg, body }); found.push(...serviceUrls(body)) } catch (e) { /* not there */ }
       }
     }
   }
-  if (!found.length) throw Object.assign(new Error('no ArcGIS service address found in the LTSA page'), { raw })
-  const out = []
-  for (const svc of found) {
-    if (/\/\d+$/.test(svc)) { out.push(svc); continue }
-    try {
-      const { json } = await http.fetchJson(`${svc}?f=json`)
-      for (const l of json.layers || []) out.push(`${svc}/${l.id}`)
-    } catch (e) { /* skip */ }
-  }
-  if (!out.length) throw Object.assign(new Error(`ArcGIS services found but no layers: ${found.join(', ')}`), { raw })
-  return out
+  if (!found.length) throw Object.assign(new Error('no warnings service address found in the LTSA page'), { raw })
+  return [...new Set(found)]
 }
 
 module.exports = {
@@ -71,23 +87,42 @@ module.exports = {
   attribution: 'Lithuanian Transport Safety Administration',
   serviceUrls,
   configUrls,
+  join,
   async fetch ({ http, now }) {
     const raw = []
     try {
-      if (!layers) layers = await discover(http, raw)
+      if (!services) services = await discover(http, raw)
       const warnings = []
-      for (const l of layers) {
-        const url = `${l}/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson`
-        const { json, body } = await http.fetchJson(url)
-        raw.push({ url, body })
-        warnings.push(...featuresToWarnings(json.features || [], { issuer: 'LITHUANIAN', prefix: 'lithuanian-local', url: PAGE, now }))
+      for (const svc of services) {
+        const { json: info, body: infoBody } = await http.fetchJson(`${svc}?f=json`)
+        raw.push({ url: `${svc}?f=json`, body: infoBody })
+        const rows = []; const shapes = []
+        for (const t of info.tables || []) {
+          const url = `${svc}/${t.id}/query?where=1%3D1&outFields=*&f=json`
+          const { json, body } = await http.fetchJson(url)
+          raw.push({ url, body })
+          rows.push(...(json.features || []).map(f => f.attributes || {}))
+        }
+        const seen = new Set()
+        for (const l of info.layers || []) {
+          const url = `${svc}/${l.id}/query?where=1%3D1&outFields=*&returnGeometry=true&outSR=4326&f=geojson`
+          const { json, body } = await http.fetchJson(url)
+          raw.push({ url, body })
+          for (const f of json.features || []) {
+            const k = gid(f.properties && f.properties.globalid)
+            if (k && seen.has(k)) continue // the same shape published in two layers
+            seen.add(k); shapes.push(f)
+          }
+        }
+        if (!rows.length) throw Object.assign(new Error(`${svc}: no warnings table found (layers: ${(info.layers || []).map(l => l.id + ' ' + l.name).join(', ')})`), { raw })
+        warnings.push(...join(rows, shapes, { now }))
       }
-      return { warnings, raw }
+      return { warnings, raw, note: `service: ${services.join(', ')}` }
     } catch (e) {
-      layers = null
-      if (!e.raw) e.raw = raw // the probe report then shows what was found
+      services = null
+      if (!e.raw) e.raw = raw
       throw e
     }
   },
-  _reset () { layers = null }
+  _reset () { services = null }
 }

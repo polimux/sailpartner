@@ -96,13 +96,5 @@ module.exports = {
     coveredBy: 'BALTICO',
     note: 'raw radio reception; only clean Baltic warnings are used',
     filter: cleanRadio
-  }),
-  elwis: probeSource({
-    id: 'elwis',
-    name: 'ELWIS BfS and firing ranges (probe)',
-    // BfS list (all sea regions); firing times for Todendorf/Putlos are issued by WSA Lübeck
-    urls: ['https://www.elwis.de/DE/dynamisch/Bfs/bfsSeeregion:alle', 'https://www.elwis.de/DE/dynamisch/BfS/index.php'],
-    attribution: 'Wasserstraßen- und Schifffahrtsverwaltung des Bundes (ELWIS)',
-    note: 'Saves raw responses only; parser follows once the live format is confirmed.'
   })
 }

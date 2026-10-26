@@ -20,6 +20,7 @@ const pkg = require('../package.json')
 
 const RAW_IN_REPORT = 5000
 const { htmlToText } = require('../lib/html')
+const { parseForms, describe } = require('../lib/forms')
 
 // The useful part of a response for the report: readable text of web pages,
 // addresses found in scripts, the start of everything else.
@@ -32,7 +33,8 @@ function excerpt (url, body) {
     // skip menus: start at the main content when the page marks it
     const at = ['<main', 'id="content"', 'id="main"'].map(m => body.indexOf(m)).filter(i => i > 0).sort((a, b) => a - b)[0] || 0
     const text = htmlToText(body.slice(at)).replace(/\n{3,}/g, '\n\n').trim()
-    return ['Page text:', text.slice(0, RAW_IN_REPORT)]
+    const forms = /<form\b/i.test(body) ? parseForms(body, url.replace(/^(GET|POST) /, '').split('  ')[0]) : []
+    return ['Page text:', text.slice(0, RAW_IN_REPORT), ...(forms.length ? ['Forms on this page:', describe(forms)] : [])]
   }
   return ['Start:', body.slice(0, RAW_IN_REPORT)]
 }

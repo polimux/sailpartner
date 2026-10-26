@@ -163,7 +163,10 @@ test('DWD coastal warnings: polygons, names, English preferred, lat/lon order de
 test('LTSA: ArcGIS service addresses are found in the app script', () => {
   const ltsa = require('../lib/sources/ltsa')
   const js = 'var a={url:"https://gis.eltsa.lt/arcgis/rest/services/NW/NavWarnings/FeatureServer/0",b:"https://js.arcgis.com/4.18/"};x("https://gis.eltsa.lt/arcgis/rest/services/NW/Base/MapServer")'
-  assert.deepEqual(ltsa.serviceUrls(js), ['https://gis.eltsa.lt/arcgis/rest/services/NW/NavWarnings/FeatureServer/0', 'https://gis.eltsa.lt/arcgis/rest/services/NW/Base/MapServer'])
+  assert.deepEqual(ltsa.serviceUrls(js), ['https://gis.eltsa.lt/arcgis/rest/services/NW/NavWarnings/FeatureServer'])
+  // as found in the live script (26 Oct 2026): sample and chart services are skipped
+  const live = '"https://hydro.eltsa.lt/arcgis/rest/services/SampleWorldCities/MapServer/exts/MaritimeChartService/MapServer","https://hydro.eltsa.lt/arcgis/rest/services/Hosted/MaritimeWarnings_LT/FeatureServer/","https://services.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer"'
+  assert.deepEqual(ltsa.serviceUrls(live), ['https://hydro.eltsa.lt/arcgis/rest/services/Hosted/MaritimeWarnings_LT/FeatureServer'])
 })
 
 test('LTSA: basemaps are not mistaken for the warnings service', () => {
@@ -211,4 +214,32 @@ test('DWD live sample (26 Oct 2026): German text gets an English title and trans
   assert.equal(w.severity, 'warn')
   assert.equal(w.text.split('\n')[0], 'SW 6, gusts Bft 8, turning S.')
   assert.equal(w.validTo, null)
+})
+
+test('LTSA: warning texts from the table are joined with their shapes', () => {
+  const ltsa = require('../lib/sources/ltsa')
+  const rows = [{ objectid: 7, globalid: '{959D9F94-183B-4132-AA4F-281705C014BA}', number: '45/26', text_en: 'KLAIPEDA PORT. DREDGING WORKS IN AREA. KEEP CLEAR.', valid_to: 1793500000000 }]
+  const shapes = [
+    { type: 'Feature', geometry: { type: 'Polygon', coordinates: [[[21.07, 55.72], [21.09, 55.72], [21.09, 55.73], [21.07, 55.72]]] }, properties: { globalid: '{A}', warn_globalid: '{959D9F94-183B-4132-AA4F-281705C014BA}' } },
+    { type: 'Feature', geometry: { type: 'Point', coordinates: [21.1, 55.71] }, properties: { globalid: '{B}', warn_globalid: '{959D9F94-183B-4132-AA4F-281705C014BA}' } },
+    { type: 'Feature', geometry: { type: 'Point', coordinates: [20.3, 56.0] }, properties: { globalid: '{C}', warn_globalid: '{OTHER}' } }
+  ]
+  const [w] = ltsa.join(rows, shapes)
+  assert.equal(w.label, 'LITHUANIAN WARNING 45/26')
+  assert.equal(w.geometry.polygon[0].longitude, 21.07)
+  assert.deepEqual(w.geometry.positions, [{ latitude: 55.71, longitude: 21.1 }])
+  assert.equal(w.validTo, new Date(1793500000000).toISOString())
+})
+
+test('ELWIS: the BfS search is filled in for WSA Ostsee', () => {
+  const elwis = require('../lib/sources/elwis')
+  const html = `<form action="/DE/dynamisch/Bfs/bfsNr" method="get"><input name="nr"><select name="amtNr"><option value="1">WSA Ostsee</option></select><input type="submit" value="aufrufen"></form>
+  <form action="/DE/dynamisch/Bfs/bfsSuche" method="post"><input type="hidden" name="token" value="abc">
+  <select name="seeregion"><option value="alle" selected>Alle Seeregionen</option></select>
+  <select name="herausgeber"><option value="">-- Alle Ämter --</option><option value="17">WSA Elbe-Nordsee</option><option value="21">WSA Ostsee</option></select>
+  <input type="submit" name="suchen" value="Suche starten..."><input type="submit" name="reset" value="Suche zurücksetzen"></form>`
+  const { req } = elwis.searchRequest(html)
+  assert.equal(req.method, 'POST')
+  assert.equal(req.url, 'https://www.elwis.de/DE/dynamisch/Bfs/bfsSuche')
+  assert.equal(req.body, 'token=abc&suchen=Suche+starten...&seeregion=alle&herausgeber=21')
 })
