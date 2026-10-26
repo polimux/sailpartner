@@ -225,7 +225,8 @@ function sourcesStatus () {
   if (!state.sources) return { text: 'Warnings plugin not reachable', level: 'amber' }
   const enabled = state.sources.filter(s => s.enabled && !s.probeOnly)
   const failing = enabled.filter(s => s.lastError)
-  if (failing.length) return { text: `${failing.length} warning source${failing.length > 1 ? 's' : ''} failing`, level: 'amber' }
+  const short = n => n.replace(/ \(.*\)$/, '').split(' / ')[0]
+  if (failing.length) return { text: `${failing.length === 1 ? short(failing[0].name) : failing.length + ' warning sources'} failing — see Warnings`, level: 'amber' }
   const last = enabled.map(s => s.lastSuccess).filter(Boolean).sort().pop()
   return { text: last ? `Warning sources OK ${clock(last)}` : 'Warning sources starting…', level: last ? 'green' : 'grey' }
 }
@@ -1035,14 +1036,20 @@ function renderWarnings () {
 
   panel(796, 532, 464, 210)
   T(816, 562, 'Sources', 18, C.text, { 'font-weight': 500 })
-  ;(state.sources || []).slice(0, 6).forEach((s, i) => {
-    const y = 592 + i * 25
+  let y = 592
+  for (const s of (state.sources || []).filter(x => x.enabled).concat((state.sources || []).filter(x => !x.enabled))) {
+    if (y > 730) break
     const col = !s.enabled ? C.dim : s.lastError ? C.amber : s.lastSuccess ? C.green : C.dim
     el('circle', { cx: 824, cy: y - 5, r: 5, fill: col })
     fit(T(838, y, s.name.replace(/ \(.*\)$/, ''), 15, s.enabled ? C.soft : C.dim), 250, 11)
     const st = !s.enabled ? 'off' : s.probeOnly ? 'probe only' : s.lastError ? `failed ${clock(s.lastError.at)}` : s.lastSuccess ? `OK ${clock(s.lastSuccess)} · ${s.count}` : 'waiting'
     T(1240, y, st, 14, s.lastError ? C.amber : C.muted, { 'text-anchor': 'end' })
-  })
+    if (s.enabled && s.lastError) {
+      y += 20
+      fit(T(838, y, s.lastError.message, 13, C.amberText), 402, 10)
+    }
+    y += 25
+  }
   nav('warnings')
 }
 async function refreshWarnings () {

@@ -194,6 +194,7 @@ test('attention cards and status line', () => {
   const st = L.status({ battery: { soc: 78, timeRemainingS: 151200 }, wind: { tws: 14.1, twd: 230, gust10: 18 }, cabin: { temp: 14.2, humidity: 90 } })
   assert.deepEqual(st.map(s => s.text), ['Battery 78 % · 1d 18h', 'Wind now SW 14 kn · gust 18', 'Cabin 14 °C · 90 %'])
   assert.equal(st[2].level, 'amber', 'damp cabin')
+  assert.equal(L.status({ wind: { aws: 14.1 }, cabin: {} })[1].text, 'Wind now 14 kn apparent', 'no true wind: show apparent')
 })
 
 test('better departure search', () => {

@@ -247,6 +247,9 @@ function status ({ battery, wind, cabin }) {
   if (typeof wind.tws === 'number') {
     const g = typeof wind.gust10 === 'number' ? ` · gust ${Math.round(wind.gust10)}` : ''
     out.push({ text: `Wind now ${compass8(wind.twd)} ${Math.round(wind.tws)} kn${g}`.replace('now  ', 'now '), level: 'green' })
+  } else if (typeof wind.aws === 'number') {
+    // no true wind (needs boat speed and heading, e.g. signalk-derived-data): show apparent
+    out.push({ text: `Wind now ${Math.round(wind.aws)} kn apparent`, level: 'green' })
   } else out.push({ text: 'Wind: no data', level: 'grey' })
   if (typeof cabin.temp === 'number') {
     const hum = typeof cabin.humidity === 'number' ? ` · ${cabin.humidity} %` : ''
